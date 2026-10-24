@@ -79,7 +79,12 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    restore an emulator save state. SkyEmu's usual in-game save handling applies.
    Leave `GAME_ROM` empty to keep opening SkyEmu and your ROM manually.
 
-   `SKYEMU_SPEED=2` holds SkyEmu's 2x fast-forward input during play. Use `1`
+   `SKYEMU_SPEED=2` sends the held 2x fast-forward hotkey directly to the SkyEmu
+   game window on Windows. It uses the default `F` binding. If you changed that
+   binding in SkyEmu, add `SKYEMU_FAST_FORWARD_KEY=G` (or your chosen letter or
+   digit) to your settings file. It does not type into the terminal or move
+   keyboard focus. Exactly one SkyEmu window must be open. Look for `2X` in
+   SkyEmu's toolbar to verify it applied. Use `1`
    for normal speed, or pass `--speed 1` / `--speed 2` to override the file.
    Each gameplay tap is fixed at 50 ms at 1x (25 ms at 2x), followed
    by release. Sequences have an additional 50 ms release interval (25 ms at
@@ -90,7 +95,11 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    pauses AI actions only, so the game keeps running at the selected speed.
    Speed affects emulation, not model response latency. Hardcore mode may
    restrict fast forward; disable it for harness play. If your build does not
-   expose the speed input, use `SKYEMU_SPEED=1` and its toolbar controls.
+   support the window hotkey, use `SKYEMU_SPEED=1` and its toolbar controls.
+   SkyEmu v5 merges HTTP inputs after processing window speed hotkeys, so
+   sending its fast-forward icon through `/input` does not enable speedup.
+   Startup prints the selected settings file and requested speed to help
+   diagnose shell variables or `--env-file` / `--speed` overrides.
 
    Choose a model supporting both image inputs and tool calling.
    Change `OPENROUTER_MODEL` or pass

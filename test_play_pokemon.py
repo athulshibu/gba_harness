@@ -268,22 +268,44 @@ class HarnessTests(unittest.TestCase):
     def test_2x_speed_stays_enabled_during_actions_and_is_restored(self):
         emulator = SkyEmu("http://localhost:8080")
         emulator.api = Mock()
-        emulator.status = Mock(return_value={"inputs": {"Emulator \uf04e": 0}})
-        with patch("play_pokemon.time.sleep"):
+        with patch("play_pokemon.time.sleep"), patch("play_pokemon.WindowsSpeedControl") as control:
             emulator.set_speed(2)
+        key = control.return_value
         self.assertEqual(emulator.speed, 2)
-        emulator.api.assert_called_with("input", **{"Emulator \uf04e": 1})
+        self.assertEqual([call.args[0] for call in key.send.call_args_list], [False, True])
+        self.assertFalse(any(call.kwargs.get("Emulator \uf04e") == 1 for call in emulator.api.call_args_list))
         emulator.release()
         self.assertNotIn("Emulator \uf04e", emulator.api.call_args.kwargs)
         emulator.restore_speed()
-        emulator.api.assert_called_with("input", **{"Emulator \uf04e": 0})
+        key.send.assert_called_with(False)
+        emulator.api.assert_called_with("run")
         self.assertEqual(emulator.speed, 1)
 
-    def test_unsupported_speed_input_has_a_clear_error(self):
+    def test_normal_speed_does_not_require_window_control(self):
         emulator = SkyEmu("http://localhost:8080")
-        emulator.status = Mock(return_value={"inputs": {"A": 0}})
-        with self.assertRaisesRegex(ValueError, "SKYEMU_SPEED=1"):
+        emulator.api = Mock()
+        with patch("play_pokemon.WindowsSpeedControl") as control:
+            emulator.set_speed(1)
+        control.assert_not_called()
+        emulator.api.assert_called_with("run")
+
+    def test_speed_key_uses_configured_binding_and_can_be_released_after_failure(self):
+        emulator = SkyEmu("http://localhost:8080")
+        emulator.api = Mock()
+        with patch.dict(os.environ, {"SKYEMU_FAST_FORWARD_KEY": "G"}), patch("play_pokemon.WindowsSpeedControl") as control, patch("play_pokemon.time.sleep"):
+            control.return_value.send.side_effect = [None, OSError("message rejected"), None]
+            with self.assertRaisesRegex(OSError, "message rejected"):
+                emulator.set_speed(2)
+            control.assert_called_once_with("G")
+            emulator.restore_speed()
+            control.return_value.send.assert_called_with(False)
+
+    def test_window_control_failure_is_reported_without_claiming_2x(self):
+        emulator = SkyEmu("http://localhost:8080")
+        emulator.api = Mock()
+        with patch("play_pokemon.WindowsSpeedControl", side_effect=ValueError("No SkyEmu window")), self.assertRaisesRegex(ValueError, "No SkyEmu window"):
             emulator.set_speed(2)
+        self.assertEqual(emulator.speed, 1)
 
     def test_rejects_invalid_controller_actions(self):
         for invalid in (action("Reset Game"), action() | {"duration_ms": 500}, action() | {"duration_ms": True}):

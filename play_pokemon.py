@@ -13,6 +13,7 @@ import time
 from urllib.parse import urlsplit
 
 import requests
+from skyemu_window import WindowsSpeedControl
 
 
 def verified_request(send, url, **kwargs):
@@ -54,7 +55,7 @@ def load_env(path):
             continue
         name, value = line.split("=", 1)
         name, value = name.strip(), value.strip()
-        if name not in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "SKYEMU_EXE", "GAME_ROM", "SKYEMU_SPEED", "SKYEMU_URL"):
+        if name not in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "SKYEMU_EXE", "GAME_ROM", "SKYEMU_SPEED", "SKYEMU_URL", "SKYEMU_FAST_FORWARD_KEY"):
             continue
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
             value = value[1:-1]
@@ -205,7 +206,7 @@ class SkyEmu:
         self.session = requests.Session()
         self.session.trust_env = False
         self.speed = 1
-        self.speed_button = None
+        self.speed_control = None
 
     def api(self, endpoint, timeout=5, **params):
         response = self.session.get(f"{self.base}/{endpoint}", params=params, timeout=timeout)
@@ -286,25 +287,26 @@ class SkyEmu:
     def set_speed(self, speed):
         if speed not in (1, 2):
             raise ValueError("SKYEMU_SPEED must be 1 or 2")
-        inputs = self.status().get("inputs", {})
-        # Fork Awesome's Forward icon is SkyEmu's hold-to-run-at-2x input.
-        button = "Emulator \uf04e"
-        if button not in inputs:
-            if speed == 2:
-                raise ValueError("This SkyEmu build does not expose the 2x speed input. Set SKYEMU_SPEED=1 or use the window's Fast Forward control.")
-            return
-        self.speed_button = button
-        self.api("input", **{button: 0})
-        time.sleep(0.05)  # Ensure a fresh press edge on repeated harness runs.
+        self.restore_speed()
+        # In v5, HTTP inputs merge AFTER GUI speed-key processing. Sending
+        # the icon through /input cannot activate its fast-forward hotkey.
+        self.api("input", **{"Emulator \uf04e": 0})  # Clear old harness input.
+        self.api("run")  # The documented /run command resets emulation to 1x.
         if speed == 2:
-            self.api("input", **{button: 1})
+            self.speed_control = WindowsSpeedControl(os.getenv("SKYEMU_FAST_FORWARD_KEY") or "F")
+            self.speed_control.send(False)
+            time.sleep(0.05)
+            self.speed_control.send(True)
+            time.sleep(0.05)  # Let the window process its hotkey event.
         self.speed = speed
-        print(f"Game speed: {speed}x", flush=True)
+        print(f"Game speed requested: {speed}x" +
+              (f" (SkyEmu window hotkey {self.speed_control.key}; look for 2X in the toolbar)" if self.speed_control else ""), flush=True)
 
     def restore_speed(self):
-        if self.speed_button is not None:
-            self.api("input", **{self.speed_button: 0})
-            self.speed_button = None
+        if self.speed_control is not None:
+            self.speed_control.send(False)
+            self.speed_control = None
+            self.api("run")
         self.speed = 1
 
     def release(self):
@@ -506,6 +508,7 @@ def main():
     history = deque(maxlen=12)
     try:
         print("OpenRouter model:", args.model, flush=True)
+        print(f"Settings file: {env_path.resolve()}; requested SKYEMU_SPEED: {args.speed}x", flush=True)
         emulator.prepare(os.getenv("SKYEMU_EXE") or "SkyEmu-v5-Windows.exe", os.getenv("GAME_ROM", ""), Path(__file__).resolve().parent)
         print("Connection:", emulator.reply_text(emulator.api("ping")))
         emulator.release()
@@ -535,7 +538,7 @@ def main():
                         continue
                     invalid_decisions += 1
                     decision_error = str(exc)
-                    print(f"[{step}] Invalid model decision ({invalid_decisions}/3): {decision_error}. No action executed.", flush=True)
+                    print(f"\n[{step}] Invalid model decision ({invalid_decisions}/3): {decision_error}. No action executed.", flush=True)
                     if invalid_decisions >= 3:
                         print("AI paused after three invalid decisions. Type instructions and /resume to try again, or /quit.", flush=True)
                         operator.receive("/pause")
@@ -576,7 +579,7 @@ def main():
             print(f"Could not release buttons: {exc}")
         try:
             emulator.restore_speed()
-        except requests.RequestException as exc:
+        except (requests.RequestException, OSError, ValueError) as exc:
             print(f"Could not restore game speed: {exc}")
         emulator.session.close()
     return 0
