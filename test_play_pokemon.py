@@ -27,6 +27,47 @@ def completion(*actions, finish_reason="tool_calls"):
 
 
 class HarnessTests(unittest.TestCase):
+    def test_soul_is_included_with_controller_rules_in_model_request(self):
+        session = Mock()
+        session.post.return_value.json.return_value = completion(action())
+        choose_action(session, "test-key", "test-model", b"png", ["Choose Mudkip"], "", [],
+                      soul="Use trainer name NOVA. Choose Torchic.")
+        messages = session.post.call_args.kwargs["json"]["messages"]
+        self.assertIn("Use trainer name NOVA. Choose Torchic.", messages[0]["content"])
+        self.assertIn("call press_buttons exactly once", messages[0]["content"])
+        self.assertIn("Session operator instructions take priority", messages[0]["content"])
+        self.assertIn("Choose Mudkip", messages[1]["content"][0]["text"])
+
+    def test_soul_file_setting_and_cli_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            configured = Path(directory) / "trainer soul.md"
+            configured.write_text("Choose Torchic. 트레이너 NOVA", encoding="utf-8-sig")
+            override = Path(directory) / "other.md"
+            override.write_text("Choose Mudkip.", encoding="utf-8")
+            settings = Path(directory) / "settings.env"
+            settings.write_text(f'SOUL_FILE="{configured}"\n', encoding="utf-8")
+            for cli_override in (False, True):
+                with self.subTest(cli_override=cli_override):
+                    args = ["--env-file", str(settings)]
+                    if cli_override:
+                        args += ["--soul-file", str(override)]
+                    result, _, _, choose, _ = self.run_mock_game([action()], args, load_settings=True)
+                    self.assertEqual(result, 0)
+                    self.assertEqual(choose.call_args.kwargs["soul"],
+                                     "Choose Mudkip." if cli_override else "Choose Torchic. 트레이너 NOVA")
+
+    def test_explicit_missing_soul_file_fails_before_emulator_control(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("sys.stderr"), self.assertRaises(SystemExit) as error:
+                self.run_mock_game([action()], ["--soul-file", str(Path(directory) / "missing.md")])
+            self.assertEqual(error.exception.code, 2)
+
+    def test_missing_default_soul_is_optional(self):
+        with patch("play_pokemon.Path.read_text", side_effect=FileNotFoundError):
+            result, _, _, choose, _ = self.run_mock_game([action()])
+        self.assertEqual(result, 0)
+        self.assertEqual(choose.call_args.kwargs["soul"], "")
+
     def test_certificate_handshake_retries_keep_verification_enabled(self):
         send = Mock(side_effect=[requests.exceptions.SSLError("CERTIFICATE_VERIFY_FAILED: EE certificate key too weak"), Mock(status_code=200)])
         with patch("play_pokemon.time.sleep"):
@@ -359,6 +400,36 @@ class HarnessTests(unittest.TestCase):
             self.assertGreaterEqual(calls[index][0] - calls[index - 1][0] + 1e-9, RELEASE_SECONDS)
         self.assertEqual(execution["completed_taps"], ["Right", "Right", "Down", "A"])
         self.assertTrue(execution["sequence_completed"])
+
+    def test_all_four_taps_allow_animation_time_at_each_speed(self):
+        for speed in (1, 2):
+            with self.subTest(speed=speed):
+                clock = [0.0]
+                presses = []
+                releases = []
+                emulator = SkyEmu("http://unused")
+                emulator.speed = speed
+
+                def record(endpoint, **params):
+                    if any(params.values()):
+                        presses.append(clock[0])
+                    else:
+                        releases.append(clock[0])
+
+                def advance(seconds):
+                    clock[0] += seconds
+
+                emulator.api = record
+                with patch("play_pokemon.time.monotonic", side_effect=lambda: clock[0]), patch("play_pokemon.time.sleep", side_effect=advance):
+                    execution = emulator.act(action(["Right"] * 4), Operator("Play"), 0)
+
+                self.assertEqual(len(presses), 4)
+                self.assertEqual(len(releases), 4)
+                for index in range(1, 4):
+                    # Each later tap must wait out the game's animation window.
+                    self.assertGreaterEqual((presses[index] - releases[index - 1]) * speed + 1e-9, 0.30)
+                self.assertEqual(execution["completed_taps"], ["Right"] * 4)
+                self.assertTrue(execution["sequence_completed"])
 
     def test_instruction_or_pause_during_sequence_skips_remaining_taps(self):
         for instruction in ("/pause", "/quit", "Stop naming and wait"):

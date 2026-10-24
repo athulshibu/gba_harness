@@ -56,7 +56,7 @@ def load_env(path):
             continue
         name, value = line.split("=", 1)
         name, value = name.strip(), value.strip()
-        if name not in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "SKYEMU_EXE", "GAME_ROM", "SKYEMU_SPEED", "SKYEMU_URL", "SKYEMU_FAST_FORWARD_KEY"):
+        if name not in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "SKYEMU_EXE", "GAME_ROM", "SKYEMU_SPEED", "SKYEMU_URL", "SKYEMU_FAST_FORWARD_KEY", "SOUL_FILE"):
             continue
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
             value = value[1:-1]
@@ -66,7 +66,9 @@ def load_env(path):
 BUTTONS = ("A", "B", "Up", "Down", "Left", "Right", "Start", "Select", "L", "R")
 TAP_SECONDS = 0.05  # About three emulated frames, below menu key-repeat delays.
 WAIT_SECONDS = 0.25
-RELEASE_SECONDS = 0.05
+# Allow movement/menu animations to finish before the next tap (game time).
+RELEASE_SECONDS = 0.30
+SCREENSHOT_WAIT = 0.3
 MAX_TAPS = 4
 TOOL = {
     "type": "function",
@@ -183,7 +185,7 @@ class Operator:
             else:
                 self.messages.append(line)
             self.version += 1
-        print("Received:", line, flush=True)
+        print("Received:", line.replace("\n", "\n          "), flush=True)
 
     def snapshot(self):
         with self.lock:
@@ -207,9 +209,9 @@ class Operator:
             self.version += 1
             self.paused = False
             self.version += 1
-        print("Received: /pause", flush=True)
-        print("Received:", message, flush=True)
-        print("Received: /resume", flush=True)
+        # print("\nReceived: /pause", flush=True)
+        print("Received:", message.replace("\n", "\n          "), flush=True)
+        # print("Received: /resume", flush=True)
 
     def read_terminal(self):
         while True:
@@ -418,7 +420,13 @@ def parse_model_action(data):
         raise ModelDecisionError(str(exc)) from exc
 
 
-def choose_action(session, key, model, image, messages, memory, history, previous_image=None, decision_error="", observer=None):
+def choose_action(session, key, model, image, messages, memory, history, previous_image=None, decision_error="", observer=None, soul=""):
+    instructions = INSTRUCTIONS
+    if soul.strip():
+        instructions += ("\nPersistent operator preferences from the soul file follow. "
+                         "Use these for personality and gameplay choices while keeping the controller "
+                         "and reporting requirements above. Session operator instructions take priority "
+                         "over these preferences when they conflict.\n\n" + soul)
     context = json.dumps({
         "operator_instructions": messages,
         "game_memory": memory,
@@ -453,7 +461,7 @@ def choose_action(session, key, model, image, messages, memory, history, previou
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": INSTRUCTIONS},
+            {"role": "system", "content": instructions},
             {"role": "user", "content": content}],
         "tools": [TOOL],
         # Haiku providers support auto but reject required/named choices.
@@ -526,6 +534,8 @@ def main():
     parser.add_argument("--speed", type=int, choices=(1, 2), default=os.getenv("SKYEMU_SPEED") or "1", help="Game speed; overrides SKYEMU_SPEED in the settings file")
     parser.add_argument("--model", default=os.getenv("OPENROUTER_MODEL"), help="OpenRouter model ID supporting images and tool calling (provider/model)")
     parser.add_argument("--goal", default="Play Pokemon and progress through the story.")
+    parser.add_argument("--soul-file", type=Path, default=os.getenv("SOUL_FILE") or None,
+                        help="Persistent AI instructions (default: SOUL.md beside this script); relative paths use the current directory; overrides SOUL_FILE")
     parser.add_argument("--steps", type=int, default=20, help="Maximum decisions; 0 runs until stopped (default: 20)")
     parser.add_argument("--check-connection", action="store_true", help="Test verified OpenRouter HTTPS without an API key, paid inference, or emulator")
     parser.add_argument("--browser", action="store_true", help="Open local live chat and emulator view")
@@ -545,6 +555,15 @@ def main():
         parser.error("--steps must be zero or positive")
     if not 0 <= args.web_port <= 65535:
         parser.error("--web-port must be between 0 and 65535")
+    soul_path = args.soul_file if args.soul_file is not None else Path(__file__).resolve().with_name("SOUL.md")
+    try:
+        soul = soul_path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        if args.soul_file is not None:
+            parser.error(f"Soul file not found: {soul_path}")
+        soul = ""
+    except (OSError, UnicodeError) as exc:
+        parser.error(f"Cannot read soul file {soul_path}: {exc}")
 
     operator = Operator(args.goal)
     emulator = SkyEmu(args.base)
@@ -561,6 +580,7 @@ def main():
             dashboard.start()
         print("OpenRouter model:", args.model, flush=True)
         print(f"Settings file: {env_path.resolve()}; requested SKYEMU_SPEED: {args.speed}x", flush=True)
+        print(f"Soul file: {soul_path.resolve()} ({'loaded' if soul.strip() else 'no custom instructions'})", flush=True)
         emulator.prepare(os.getenv("SKYEMU_EXE") or "SkyEmu-v5-Windows.exe", os.getenv("GAME_ROM", ""), Path(__file__).resolve().parent)
         print("Connection:", emulator.reply_text(emulator.api("ping")))
         emulator.release()
@@ -584,6 +604,7 @@ def main():
                 step += 1
                 try:
                     action = choose_action(model_session, key, args.model, image, messages, memory, history, previous_image, decision_error,
+                                           soul=soul,
                                            **({"observer": dashboard.record_model} if dashboard is not None else {}))
                 except ModelDecisionError as exc:
                     if operator.snapshot()[:3] != (version, False, False):
@@ -620,7 +641,7 @@ def main():
                                | {"decision": step, "execution": execution})
                 previous_image = image
                 # Give the released input and UI transition time to register.
-                time.sleep(0.15)
+                time.sleep(SCREENSHOT_WAIT)
     except KeyboardInterrupt:
         print("Stopped.")
     except (requests.RequestException, ValueError, OSError) as exc:

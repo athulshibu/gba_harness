@@ -87,8 +87,9 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    SkyEmu's toolbar to verify it applied. Use `1`
    for normal speed, or pass `--speed 1` / `--speed 2` to override the file.
    Each gameplay tap is fixed at 50 ms at 1x (25 ms at 2x), followed
-   by release. Sequences have an additional 50 ms release interval (25 ms at
-   2x) between taps so repeated buttons register separately.
+   by release. Sequences allow 300 ms of released game time (150 ms at
+   2x) between taps so movement and menu animations can settle before the
+   next input. Longer transitions can still require `WAIT` or a new observation.
    The model cannot select a longer hold. `WAIT` advances 250 ms
    of game time without a button press. Speed is restored to 1x when the harness exits
    normally or handles an error/Ctrl+C; the window is left open. `/pause`
@@ -127,6 +128,32 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    decision uses the new instructions. A message during a button press cuts
    that press short and cancels remaining taps in the sequence. Instruction following is model behavior and is not
    guaranteed; enforce essential restrictions in code if needed.
+
+## Persistent AI instructions (soul file)
+
+Edit `SOUL.md` beside `play_pokemon.py` to set the player's personality,
+trainer name, preferred starter, team preferences, or challenge rules.
+Its full text is loaded at startup and included in every model request in
+both terminal and browser mode. Restart the player after editing the file.
+For example, add `Choose Torchic as your starter` or `Use the trainer name NOVA`.
+
+To choose another UTF-8 text or Markdown file:
+
+```powershell
+.\codespace\Scripts\python.exe .\play_pokemon.py --soul-file .\my-trainer.md --browser --steps 0
+```
+
+You can also set `SOUL_FILE=./my-trainer.md` in `.env`. Shell variables take
+precedence over `.env`, and `--soul-file` overrides both. Relative custom paths
+use the terminal's current directory. The default `SOUL.md` is optional;
+an explicitly configured file must exist and be readable. An empty file adds
+no preferences. Keep secrets out of this file: its content is sent to the model
+provider and appears in the browser's model request view.
+
+Session goals and live instructions override conflicting soul preferences.
+The harness still validates controller actions; preferences guide the model
+and are not code-enforced gameplay restrictions. Game memory still resets
+between runs; the soul file stores your instructions, not automatic progress notes.
 
 ## Browser view
 

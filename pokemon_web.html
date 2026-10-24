@@ -11,10 +11,13 @@ footer{border-top:1px solid #30394c;padding:16px 24px}form{display:flex;gap:12px
 #chat .action-box,.exchange .action-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#142e35;border:1px solid #398b98;border-left:4px solid #6ee7d8;border-radius:8px;color:#a5f3e5;vertical-align:top}#chat .action-label,.exchange .action-label{color:#67e8f9;font-weight:700}.exchange details{margin:8px 0}
 
 [hidden]{display:none!important}.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button[aria-selected=true]{background:#396cd0;border-color:#77a4ff}.tabs button{font-size:13px}
+#chat .received-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#29213b;border:1px solid #7960a3;border-left:4px solid #c4a0ff;border-radius:8px;color:#eadbff;vertical-align:top}#chat .received-label{color:#d8b4fe;font-weight:700}
 #model-log{overflow:auto;flex:1;min-height:0;font:13px/1.6 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}.exchange{border:1px solid #30394c;border-radius:8px;padding:12px;margin-bottom:14px}.exchange h3{margin:0 0 8px;font:600 14px system-ui;color:#a5f3e5}.exchange pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}.exchange summary{cursor:pointer;color:#a5b8d3}.model-image{max-width:100%;width:240px;image-rendering:pixelated;display:block;margin:8px 0}.model-hint{color:#9cb4cd;font:12px/1.5 system-ui}
+
+.panel:first-child{position:relative}#chat,#model-log{padding-bottom:56px;min-height:0}.scroll-bottom{position:absolute;right:40px;bottom:28px;z-index:1;width:40px;height:40px;padding:0;display:grid;place-items:center;border-radius:50%;box-shadow:0 3px 12px #0008;font-size:13px}.scroll-bottom:focus-visible{outline:2px solid #77a4ff;outline-offset:3px}@media(max-width:760px){.scroll-bottom{right:28px;bottom:20px}}
 </style>
 <header><h1>Pokemon live player</h1><span id="status" role="status">Connecting…</span><button id="pause" type="button">Pause</button><button id="resume" type="button">Resume</button><button id="quit" type="button">Stop</button></header>
-<main><section class="panel"><h2>Live chat · decisions &amp; instructions</h2><div class="tabs" role="tablist" aria-label="Live chat views"><button id="chat-tab" type="button" role="tab" aria-selected="true" aria-controls="chat">Live chat</button><button id="model-tab" type="button" role="tab" aria-selected="false" aria-controls="model-log" tabindex="-1">Model input / output</button></div><pre role="tabpanel" aria-labelledby="chat-tab" id="chat" tabindex="0" aria-label="Live player log"></pre><div id="model-log" role="tabpanel" aria-labelledby="model-tab" tabindex="0" hidden><p class="model-hint">Waiting for the first model request. Shows the latest 20 requests; images are previewed below the request JSON.</p></div></section><section class="panel"><h2>Emulator</h2><div class="screen"><img id="game" alt="Live SkyEmu game screen"></div><p id="video-status" role="status">Waiting for emulator…</p></section></main>
+<main><section class="panel"><h2>Live chat · decisions &amp; instructions</h2><div class="tabs" role="tablist" aria-label="Live chat views"><button id="chat-tab" type="button" role="tab" aria-selected="true" aria-controls="chat">Live chat</button><button id="model-tab" type="button" role="tab" aria-selected="false" aria-controls="model-log" tabindex="-1">Model input / output</button></div><pre role="tabpanel" aria-labelledby="chat-tab" id="chat" tabindex="0" aria-label="Live player log"></pre><div id="model-log" role="tabpanel" aria-labelledby="model-tab" tabindex="0" hidden><p class="model-hint">Waiting for the first model request. Shows the latest 20 requests; images are previewed below the request JSON.</p></div><button id="scroll-bottom" class="scroll-bottom" type="button" aria-controls="chat" aria-label="Scroll Live chat to bottom" title="Scroll to the latest entry"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></section><section class="panel"><h2>Emulator</h2><div class="screen"><img id="game" alt="Live SkyEmu game screen"></div><p id="video-status" role="status">Waiting for emulator…</p></section></main>
 <footer><form id="form"><textarea id="message" rows="2" aria-label="Instruction to the player" placeholder="Tell the player what to do… Enter to send, Shift+Enter for a new line" maxlength="4000" required></textarea><button id="send" type="submit">Send &amp; resume</button></form><p id="notice" role="status">Each message pauses actions, adds your instruction, then resumes. Pause affects the AI; the game keeps running. Decisions appear when the model finishes.</p></footer>
 <script>
 const token='__TOKEN__',chat=document.querySelector('#chat'),status=document.querySelector('#status'),message=document.querySelector('#message'),notice=document.querySelector('#notice');
@@ -27,21 +30,30 @@ message.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComp
 function appendLog(text){
   logText=(logText+text).slice(-250000);
   const fragment=document.createDocumentFragment(),lines=logText.split('\n');
-  lines.forEach((line,index)=>{
+  for(let index=0;index<lines.length;index++){
+    const line=lines[index];
     if(line.startsWith('Action:')){
       const box=document.createElement('span'),label=document.createElement('strong');
       box.className='action-box';label.className='action-label';label.textContent='Action:';
       box.append(label,document.createTextNode(line.slice(7)));fragment.append(box);
+    }else if(line.startsWith('Received:')&&!line.slice(9).trimStart().startsWith('/')){
+      const box=document.createElement('span'),label=document.createElement('strong');
+      box.className='received-box';label.className='received-label';label.textContent='Received:';
+      let text=line.slice(9);
+      while(index+1<lines.length&&lines[index+1].startsWith('          '))text+='\n'+lines[++index].slice(10);
+      box.append(label,document.createTextNode(text));fragment.append(box);
     }else fragment.append(document.createTextNode(line));
     if(index<lines.length-1)fragment.append(document.createTextNode('\n'));
-  });
+  }
   chat.replaceChildren(fragment);
 }
 async function events(){while(true){try{const response=await fetch('/events');if(!response.ok)throw Error('Connection lost');const data=await response.json();const follow=chat.scrollHeight-chat.scrollTop-chat.clientHeight<70;let added='';for(const [id,text] of data.lines){if(id>last){added+=text;last=id;}}if(added){appendLog(added);if(follow)chat.scrollTop=chat.scrollHeight;}connected=true;status.textContent=data.stopped?'Stopping…':data.paused?'AI paused':'AI running';}catch{connected=false;status.textContent='Disconnected · player exited or connection lost';}await delay(350);}}
 async function frames(){while(true){if(connected){try{const response=await fetch('/screen');if(!response.ok)throw Error();const next=URL.createObjectURL(await response.blob());const img=document.querySelector('#game');await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=next;});if(frameURL)URL.revokeObjectURL(frameURL);frameURL=next;document.querySelector('#video-status').textContent='Live game frames · no audio';}catch{document.querySelector('#video-status').textContent='Waiting for emulator…';}}await delay(100);}}
 
 const modelLog=document.querySelector('#model-log'),tabs=[document.querySelector('#chat-tab'),document.querySelector('#model-tab')];
-function selectTab(index){tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',String(i===index));tab.tabIndex=i===index?0:-1;});chat.hidden=index!==0;modelLog.hidden=index!==1;}
+const scrollBottom=document.querySelector('#scroll-bottom');
+scrollBottom.onclick=()=>{const log=chat.hidden?modelLog:chat;log.scrollTop=log.scrollHeight;};
+function selectTab(index){scrollBottom.setAttribute('aria-controls',index===0?'chat':'model-log');scrollBottom.setAttribute('aria-label','Scroll '+(index===0?'Live chat':'Model input / output')+' to bottom');tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',String(i===index));tab.tabIndex=i===index?0:-1;});chat.hidden=index!==0;modelLog.hidden=index!==1;}
 tabs.forEach((tab,index)=>{tab.onclick=()=>selectTab(index);tab.onkeydown=event=>{let next;if(event.key==='ArrowRight'||event.key==='ArrowLeft')next=1-index;else if(event.key==='Home')next=0;else if(event.key==='End')next=1;else return;event.preventDefault();selectTab(next);tabs[next].focus();};});
 function renderExchange(exchange){
   const card=document.createElement('article'),heading=document.createElement('h3');card.className='exchange';card.dataset.id=exchange.id;
@@ -49,11 +61,18 @@ function renderExchange(exchange){
   const previews=[];
   // Keep JSON readable while retaining the actual images as previews.
   const request=JSON.stringify(exchange.request,(key,value)=>{
-    if(key==='url'&&typeof value==='string'&&value.startsWith('data:image/png;base64,')){previews.push(value);return '[Screenshot '+previews.length+' ? preview below]';}return value;
+    if(key==='url'&&typeof value==='string'&&value.startsWith('data:image/png;base64,')){previews.push(value);return '[Screenshot '+previews.length+' - see screenshot dropdowns below]';}return value;
   },2);
   const input=document.createElement('details'),label=document.createElement('summary'),body=document.createElement('pre');
   label.textContent='Input - full request JSON';body.textContent=request;input.append(label,body);
-  previews.forEach((url,i)=>{const img=document.createElement('img');img.className='model-image';img.alt='Model input screenshot '+(i+1);img.src=url;input.append(img);});card.append(input);
+  card.append(input);
+  // The request sends the previous screenshot first (when available), then current.
+  for(const [title,url] of [['Current screenshot',previews[previews.length-1]],['Previous screenshot',previews.length>1?previews[0]:undefined]]){
+    const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent=title;details.append(summary);
+    if(url){const img=document.createElement('img');img.className='model-image';img.alt=title+' sent to the model';img.src=url;details.append(img);}
+    else{const empty=document.createElement('p');empty.className='model-hint';empty.textContent='No '+title.toLowerCase()+' was included in this request.';details.append(empty);}
+    card.append(details);
+  }
   const outputDetails=document.createElement('details'),outputLabel=document.createElement('summary'),output=document.createElement('pre');outputLabel.textContent='Output - raw model response';
   output.textContent=exchange.error!==undefined?'Request failed: '+exchange.error:exchange.response!==undefined?JSON.stringify(exchange.response,null,2):'Waiting for model response...';outputDetails.append(outputLabel,output);card.append(outputDetails);
   const actionBox=document.createElement('div'),actionLabel=document.createElement('strong');actionBox.className='action-box';actionLabel.className='action-label';actionLabel.textContent='Action: ';
