@@ -95,6 +95,20 @@ class HarnessTests(unittest.TestCase):
                 self.assertEqual(main(), 0)
         loader.assert_called_once_with(Path(play_pokemon.__file__).resolve().with_name(".env"))
 
+    def test_browser_mode_starts_and_closes_dashboard_and_restores_stdout(self):
+        import sys
+
+        original = sys.stdout
+        with patch("pokemon_web.Dashboard") as dashboard:
+            result, emulator, _, _, _ = self.run_mock_game([action()], ["--browser", "--web-port", "0"])
+        self.assertEqual(result, 0)
+        dashboard.assert_called_once()
+        self.assertEqual(dashboard.call_args.args[2], 0)
+        dashboard.return_value.start.assert_called_once_with()
+        dashboard.return_value.close.assert_called_once_with()
+        emulator.act.assert_called_once()
+        self.assertIs(sys.stdout, original)
+
     def test_custom_env_file_supplies_defaults_and_respects_overrides(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "custom settings.env"

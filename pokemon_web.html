@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pokemon live player</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10141d;color:#e5eaf3;font:15px system-ui,sans-serif;height:100dvh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:16px;padding:16px 24px;border-bottom:1px solid #30394c}h1{font-size:19px;margin:0}#status{color:#9cb4cd;font-size:13px;margin-right:auto}button{background:#293750;color:#eff5ff;border:1px solid #465b7b;border-radius:8px;padding:9px 15px;cursor:pointer}button:hover{background:#3c4e6d}button:disabled{opacity:.5;cursor:default}
+main{display:grid;grid-template-columns:1fr 1fr;flex:1;min-height:0}.panel{display:flex;flex-direction:column;padding:20px;min-height:0;min-width:0}.panel+ .panel{border-left:1px solid #30394c}h2{margin:0 0 12px;color:#a5b8d3;font-size:12px;text-transform:uppercase;letter-spacing:2px}#chat{margin:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.65 ui-monospace,Consolas,monospace;flex:1}.screen{position:relative;display:flex;align-items:center;justify-content:center;flex:1;min-height:0;background:#080b11;border-radius:12px;overflow:hidden}#game{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}#video-status{font-size:12px;color:#96aac3;margin:10px 0 0}
+footer{border-top:1px solid #30394c;padding:16px 24px}form{display:flex;gap:12px}textarea{resize:none;background:#1a2230;color:#fff;border:1px solid #465b7b;border-radius:8px;font:15px/1.5 system-ui;padding:10px;flex:1;min-width:0}#notice{margin:8px 0 0;color:#9cb4cd;font-size:12px}button[type=submit]{background:#396cd0} @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:1fr 1fr}.panel{padding:12px}.panel+ .panel{border-left:0;border-top:1px solid #30394c}header{padding:12px;gap:8px}h1{font-size:15px}footer{padding:12px}}
+#chat .action-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#142e35;border:1px solid #398b98;border-left:4px solid #6ee7d8;border-radius:8px;color:#a5f3e5;vertical-align:top}#chat .action-label{color:#67e8f9;font-weight:700}
+</style>
+<header><h1>Pokemon live player</h1><span id="status" role="status">Connecting…</span><button id="pause" type="button">Pause</button><button id="resume" type="button">Resume</button><button id="quit" type="button">Stop</button></header>
+<main><section class="panel"><h2>Live chat · decisions &amp; instructions</h2><pre id="chat" tabindex="0" aria-label="Live player log"></pre></section><section class="panel"><h2>Emulator</h2><div class="screen"><img id="game" alt="Live SkyEmu game screen"></div><p id="video-status" role="status">Waiting for emulator…</p></section></main>
+<footer><form id="form"><textarea id="message" rows="2" aria-label="Instruction to the player" placeholder="Tell the player what to do… Enter to send, Shift+Enter for a new line" maxlength="4000" required></textarea><button id="send" type="submit">Send &amp; resume</button></form><p id="notice" role="status">Each message pauses actions, adds your instruction, then resumes. Pause affects the AI; the game keeps running. Decisions appear when the model finishes.</p></footer>
+<script>
+const token='__TOKEN__',chat=document.querySelector('#chat'),status=document.querySelector('#status'),message=document.querySelector('#message'),notice=document.querySelector('#notice');
+let last=0,connected=true,busy=false,frameURL,logText="";
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function control(data){const response=await fetch('/control',{method:'POST',headers:{'Content-Type':'application/json','X-Operator-Token':token},body:JSON.stringify(data)});const result=await response.json();if(!response.ok)throw Error(result.error);}
+for(const command of ['pause','resume','quit'])document.querySelector('#'+command).onclick=async()=>{try{await control({command:'/'+command});notice.textContent=command==='quit'?'Stopping after any outstanding model request returns…':'Command sent: /'+command;}catch(error){notice.textContent=error.message;}};
+document.querySelector('#form').onsubmit=async event=>{event.preventDefault();if(busy||!message.value.trim())return;busy=true;document.querySelector('#send').disabled=true;const text=message.value;try{await control({message:text});if(message.value===text)message.value='';notice.textContent='Instruction received. Pending actions invalidated; player resumed.';}catch(error){notice.textContent='Message not sent: '+error.message;}finally{busy=false;document.querySelector('#send').disabled=false;message.focus();}};
+message.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();document.querySelector('#form').requestSubmit();}};
+function appendLog(text){
+  logText=(logText+text).slice(-250000);
+  const fragment=document.createDocumentFragment(),lines=logText.split('\n');
+  lines.forEach((line,index)=>{
+    if(line.startsWith('Action:')){
+      const box=document.createElement('span'),label=document.createElement('strong');
+      box.className='action-box';label.className='action-label';label.textContent='Action:';
+      box.append(label,document.createTextNode(line.slice(7)));fragment.append(box);
+    }else fragment.append(document.createTextNode(line));
+    if(index<lines.length-1)fragment.append(document.createTextNode('\n'));
+  });
+  chat.replaceChildren(fragment);
+}
+async function events(){while(true){try{const response=await fetch('/events');if(!response.ok)throw Error('Connection lost');const data=await response.json();const follow=chat.scrollHeight-chat.scrollTop-chat.clientHeight<70;let added='';for(const [id,text] of data.lines){if(id>last){added+=text;last=id;}}if(added){appendLog(added);if(follow)chat.scrollTop=chat.scrollHeight;}connected=true;status.textContent=data.stopped?'Stopping…':data.paused?'AI paused':'AI running';}catch{connected=false;status.textContent='Disconnected · player exited or connection lost';}await delay(350);}}
+async function frames(){while(true){if(connected){try{const response=await fetch('/screen');if(!response.ok)throw Error();const next=URL.createObjectURL(await response.blob());const img=document.querySelector('#game');await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=next;});if(frameURL)URL.revokeObjectURL(frameURL);frameURL=next;document.querySelector('#video-status').textContent='Live game frames · no audio';}catch{document.querySelector('#video-status').textContent='Waiting for emulator…';}}await delay(100);}}
+events();frames();
+</script>
+</html>

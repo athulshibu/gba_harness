@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import threading
 import time
 from urllib.parse import urlsplit
@@ -187,6 +188,28 @@ class Operator:
     def snapshot(self):
         with self.lock:
             return self.version, self.paused, self.stopped, list(self.messages)
+
+    def interrupt_message(self, message):
+        """Pause, append an instruction, and resume as one atomic update.
+
+        The version change interrupts current taps and invalidates inference,
+        even when the game loop never observes the brief paused state.
+        """
+        message = message.strip()
+        if not message or message.startswith("/"):
+            raise ValueError("Enter an instruction; use the buttons for commands.")
+        with self.lock:
+            if self.stopped:
+                raise ValueError("The player has stopped.")
+            self.paused = True
+            self.version += 1
+            self.messages.append(message)
+            self.version += 1
+            self.paused = False
+            self.version += 1
+        print("Received: /pause", flush=True)
+        print("Received:", message, flush=True)
+        print("Received: /resume", flush=True)
 
     def read_terminal(self):
         while True:
@@ -487,6 +510,8 @@ def main():
     parser.add_argument("--goal", default="Play Pokemon and progress through the story.")
     parser.add_argument("--steps", type=int, default=20, help="Maximum decisions; 0 runs until stopped (default: 20)")
     parser.add_argument("--check-connection", action="store_true", help="Test verified OpenRouter HTTPS without an API key, paid inference, or emulator")
+    parser.add_argument("--browser", action="store_true", help="Open local live chat and emulator view")
+    parser.add_argument("--web-port", type=int, default=8765, help="Local browser port (default: 8765; 0 selects a free port)")
     args = parser.parse_args()
     if args.check_connection:
         try:
@@ -500,13 +525,22 @@ def main():
         parser.error("Set OPENROUTER_API_KEY and OPENROUTER_MODEL in the settings file or your shell (or provide --model).")
     if args.steps < 0:
         parser.error("--steps must be zero or positive")
+    if not 0 <= args.web_port <= 65535:
+        parser.error("--web-port must be between 0 and 65535")
 
     operator = Operator(args.goal)
     emulator = SkyEmu(args.base)
     memory = "No previous observations."
     previous_image = None
     history = deque(maxlen=12)
+    dashboard = None
+    original_stdout = sys.stdout
     try:
+        if args.browser:
+            from pokemon_web import Dashboard
+            dashboard = Dashboard(operator, args.base, args.web_port, original_stdout)
+            sys.stdout = dashboard
+            dashboard.start()
         print("OpenRouter model:", args.model, flush=True)
         print(f"Settings file: {env_path.resolve()}; requested SKYEMU_SPEED: {args.speed}x", flush=True)
         emulator.prepare(os.getenv("SKYEMU_EXE") or "SkyEmu-v5-Windows.exe", os.getenv("GAME_ROM", ""), Path(__file__).resolve().parent)
@@ -515,7 +549,8 @@ def main():
         emulator.api("run")
         emulator.set_speed(args.speed)
         print("Type instructions and press Enter. Commands: /pause, /resume, /quit", flush=True)
-        threading.Thread(target=operator.read_terminal, daemon=True).start()
+        if not args.browser:
+            threading.Thread(target=operator.read_terminal, daemon=True).start()
         with requests.Session() as model_session:
             step = 0
             invalid_decisions = 0
@@ -582,6 +617,9 @@ def main():
         except (requests.RequestException, OSError, ValueError) as exc:
             print(f"Could not restore game speed: {exc}")
         emulator.session.close()
+        if dashboard is not None:
+            sys.stdout = original_stdout
+            dashboard.close()
     return 0
 
 

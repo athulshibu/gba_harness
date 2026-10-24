@@ -128,6 +128,41 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    that press short and cancels remaining taps in the sequence. Instruction following is model behavior and is not
    guaranteed; enforce essential restrictions in code if needed.
 
+## Browser view
+
+Open a browser with the live chat log on the left, the emulator on the right,
+and an instruction box at the bottom:
+
+```powershell
+.\codespace\Scripts\python.exe .\play_pokemon.py --browser --steps 0
+```
+
+The browser opens automatically at `http://127.0.0.1:8765`. If it does not,
+open the printed URL yourself. Use `--web-port 8766` if that port is busy,
+or `--web-port 0` to select a free port. Existing model, goal, speed, and
+environment-file options work with browser mode. No new packages are needed.
+
+Press Enter or **Send & resume** to automatically pause AI actions, add your
+instruction, and resume. Shift+Enter adds a new line. The update is atomic:
+an older model reply cannot act on the old instructions, and a running tap
+is interrupted with the remaining taps skipped. **Pause**, **Resume**, and
+**Stop** are also available separately. Sending an instruction resumes even
+if you paused manually. The browser replaces terminal input in this mode;
+logs still appear in both places. Closing the tab does not stop the player;
+reopen the URL, press Stop, or use Ctrl+C in the terminal.
+
+Game frames refresh at up to roughly 10 FPS through SkyEmu's `/screen`
+endpoint. This is a local image stream without audio; SkyEmu still runs in
+its desktop window. The game continues while AI actions are paused. The chat
+log updates live as output arrives, with each model decision appearing when
+its request completes; individual model tokens are not streamed. If you
+scroll up, new output does not pull you back to the bottom.
+
+The view is only served on your computer's loopback address. It stops when
+the harness exits or reaches `--steps`; the last visible browser content
+remains, with a disconnected status. Stop may wait for an outstanding model
+request to return or time out. Each run starts a new session log.
+
 ## How it works
 
 The harness captures `/screen`, sends the image plus instructions, concise
@@ -200,8 +235,8 @@ navigation can get stuck; this is a starter, not a guarantee of completing the
 game. Useful next improvements are frame stepping for more precise control,
 persistent map/progress notes, and game-specific RAM observations.
 
-For broadcasting, capture the SkyEmu window in OBS. This script controls play;
-it does not configure stream hosting or connect stream chat.
+For public broadcasting, capture the SkyEmu window or browser view in OBS.
+The browser view does not configure stream hosting or connect stream chat.
 
 References: [SkyEmu HTTP API](https://github.com/skylersaleh/SkyEmu/blob/dev/docs/HTTP_CONTROL_SERVER.md),
 [OpenRouter image inputs](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding),
@@ -210,7 +245,7 @@ References: [SkyEmu HTTP API](https://github.com/skylersaleh/SkyEmu/blob/dev/doc
 Run the harness tests without calling a model or controlling the emulator:
 
 ```powershell
-.\codespace\Scripts\python.exe -m unittest test_play_pokemon -v
+.\codespace\Scripts\python.exe -m unittest test_play_pokemon test_pokemon_web -v
 ```
 
 ## HTTPS connection troubleshooting
