@@ -1,0 +1,13 @@
+# Secrets and game ROMs
+.env
+.env.*
+!.env.example
+*.gba
+
+# Test files
+*.png
+
+# Python environment and cache
+codespace/
+__pycache__/
+*.pyc
