@@ -123,6 +123,18 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    ```
 
    Instructions persist for the session. Newer instructions take priority.
+   Live messages are marked as unanswered until an accepted decision replies
+   in its `operator_response` field, shown as `Player:` in Live chat, or in
+   optional `commentary`, shown as `Thoughts:`. Empty replies in both fields
+   to unanswered messages are rejected before controller input. The
+   model is instructed to answer questions before unrelated story progress,
+   or explain missing information and prioritize checking it. Replies and
+   unresolved questions are carried through action history and game memory.
+   Commentary is intended for occasional changes in broader plans, strategy,
+   feelings about the adventure, or operator answers, rather than button
+   descriptions. It may be omitted or empty and is only printed when nonempty.
+   The model is prompted to keep it infrequent and avoid repeating itself;
+   there is no fixed interval or cooldown for meaningful updates.
    A background thread receives them while the model is thinking. If they
    change before an action starts, that action is discarded and the next
    decision uses the new instructions. A message during a button press cuts
@@ -157,7 +169,10 @@ between runs; the soul file stores your instructions, not automatic progress not
 
 ## Browser view
 
-The left panel has **Live chat** and **Model input / output** tabs. The model
+The left panel opens to **Conversation**, which shows operator messages and
+the player's commentary and direct replies, without gameplay diagnostics.
+**Live chat** contains the full log, and **Model input / output** shows model
+exchanges. All three tabs support arrow-key navigation. The model
 tab keeps the latest 20 requests in memory, showing the complete request JSON
 (expand Input), screenshot previews, and raw responses, including rejected
 decisions and request errors. Requests appear while inference is pending.

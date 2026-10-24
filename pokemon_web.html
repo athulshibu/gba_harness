@@ -6,24 +6,26 @@
 <style>
 *{box-sizing:border-box}body{margin:0;background:#10141d;color:#e5eaf3;font:15px system-ui,sans-serif;height:100dvh;display:flex;flex-direction:column}
 header{display:flex;align-items:center;gap:16px;padding:16px 24px;border-bottom:1px solid #30394c}h1{font-size:19px;margin:0}#status{color:#9cb4cd;font-size:13px;margin-right:auto}button{background:#293750;color:#eff5ff;border:1px solid #465b7b;border-radius:8px;padding:9px 15px;cursor:pointer}button:hover{background:#3c4e6d}button:disabled{opacity:.5;cursor:default}
-main{display:grid;grid-template-columns:1fr 1fr;flex:1;min-height:0}.panel{display:flex;flex-direction:column;padding:20px;min-height:0;min-width:0}.panel+ .panel{border-left:1px solid #30394c}h2{margin:0 0 12px;color:#a5b8d3;font-size:12px;text-transform:uppercase;letter-spacing:2px}#chat{margin:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.65 ui-monospace,Consolas,monospace;flex:1}.screen{position:relative;display:flex;align-items:center;justify-content:center;flex:1;min-height:0;background:#080b11;border-radius:12px;overflow:hidden}#game{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}#video-status{font-size:12px;color:#96aac3;margin:10px 0 0}
+main{display:grid;grid-template-columns:1fr 1fr;flex:1;min-height:0}.panel{display:flex;flex-direction:column;padding:20px;min-height:0;min-width:0}.panel+ .panel{border-left:1px solid #30394c}h2{margin:0 0 12px;color:#a5b8d3;font-size:12px;text-transform:uppercase;letter-spacing:2px}#chat,#conversation{margin:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.65 ui-monospace,Consolas,monospace;flex:1}.screen{position:relative;display:flex;align-items:center;justify-content:center;flex:1;min-height:0;background:#080b11;border-radius:12px;overflow:hidden}#game{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}#video-status{font-size:12px;color:#96aac3;margin:10px 0 0}
 footer{border-top:1px solid #30394c;padding:16px 24px}form{display:flex;gap:12px}textarea{resize:none;background:#1a2230;color:#fff;border:1px solid #465b7b;border-radius:8px;font:15px/1.5 system-ui;padding:10px;flex:1;min-width:0}#notice{margin:8px 0 0;color:#9cb4cd;font-size:12px}button[type=submit]{background:#396cd0} @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:1fr 1fr}.panel{padding:12px}.panel+ .panel{border-left:0;border-top:1px solid #30394c}header{padding:12px;gap:8px}h1{font-size:15px}footer{padding:12px}}
 #chat .action-box,.exchange .action-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#142e35;border:1px solid #398b98;border-left:4px solid #6ee7d8;border-radius:8px;color:#a5f3e5;vertical-align:top}#chat .action-label,.exchange .action-label{color:#67e8f9;font-weight:700}.exchange details{margin:8px 0}
 
 [hidden]{display:none!important}.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button[aria-selected=true]{background:#396cd0;border-color:#77a4ff}.tabs button{font-size:13px}
-#chat .received-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#29213b;border:1px solid #7960a3;border-left:4px solid #c4a0ff;border-radius:8px;color:#eadbff;vertical-align:top}#chat .received-label{color:#d8b4fe;font-weight:700}
+#chat .received-box,#conversation .received-box,#conversation .player-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#29213b;border:1px solid #7960a3;border-left:4px solid #c4a0ff;border-radius:8px;color:#eadbff;vertical-align:top}#chat .received-label,#conversation .received-label{color:#d8b4fe;font-weight:700}
+#conversation .player-box{background:#142e35;border-color:#398b98;border-left-color:#6ee7d8;color:#a5f3e5}#conversation .player-label{color:#67e8f9;font-weight:700}
+#chat .error-box,#conversation .error-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#391d25;border:1px solid #ad4c5e;border-left:4px solid #fb7185;border-radius:8px;color:#ffe0e5;vertical-align:top}#chat .error-label,#conversation .error-label{color:#fda4af;font-weight:700}
 #model-log{overflow:auto;flex:1;min-height:0;font:13px/1.6 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}.exchange{border:1px solid #30394c;border-radius:8px;padding:12px;margin-bottom:14px}.exchange h3{margin:0 0 8px;font:600 14px system-ui;color:#a5f3e5}.exchange pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}.exchange summary{cursor:pointer;color:#a5b8d3}.model-image{max-width:100%;width:240px;image-rendering:pixelated;display:block;margin:8px 0}.model-hint{color:#9cb4cd;font:12px/1.5 system-ui}
 
-.panel:first-child{position:relative}#chat,#model-log{padding-bottom:56px;min-height:0}.scroll-bottom{position:absolute;right:40px;bottom:28px;z-index:1;width:40px;height:40px;padding:0;display:grid;place-items:center;border-radius:50%;box-shadow:0 3px 12px #0008;font-size:13px}.scroll-bottom:focus-visible{outline:2px solid #77a4ff;outline-offset:3px}@media(max-width:760px){.scroll-bottom{right:28px;bottom:20px}}
+.panel:first-child{position:relative}#chat,#conversation,#model-log{padding-bottom:56px;min-height:0}.scroll-bottom{position:absolute;right:40px;bottom:28px;z-index:1;width:40px;height:40px;padding:0;display:grid;place-items:center;border-radius:50%;box-shadow:0 3px 12px #0008;font-size:13px}.scroll-bottom:focus-visible{outline:2px solid #77a4ff;outline-offset:3px}@media(max-width:760px){.scroll-bottom{right:28px;bottom:20px}}
 </style>
 <header><h1>Pokemon live player</h1><span id="status" role="status">Connecting…</span><button id="pause" type="button">Pause</button><button id="resume" type="button">Resume</button><button id="quit" type="button">Stop</button></header>
-<main><section class="panel"><h2>Live chat · decisions &amp; instructions</h2><div class="tabs" role="tablist" aria-label="Live chat views"><button id="chat-tab" type="button" role="tab" aria-selected="true" aria-controls="chat">Live chat</button><button id="model-tab" type="button" role="tab" aria-selected="false" aria-controls="model-log" tabindex="-1">Model input / output</button></div><pre role="tabpanel" aria-labelledby="chat-tab" id="chat" tabindex="0" aria-label="Live player log"></pre><div id="model-log" role="tabpanel" aria-labelledby="model-tab" tabindex="0" hidden><p class="model-hint">Waiting for the first model request. Shows the latest 20 requests; images are previewed below the request JSON.</p></div><button id="scroll-bottom" class="scroll-bottom" type="button" aria-controls="chat" aria-label="Scroll Live chat to bottom" title="Scroll to the latest entry"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></section><section class="panel"><h2>Emulator</h2><div class="screen"><img id="game" alt="Live SkyEmu game screen"></div><p id="video-status" role="status">Waiting for emulator…</p></section></main>
+<main><section class="panel"><h2>Live chat · decisions &amp; instructions</h2><div class="tabs" role="tablist" aria-label="Live chat views"><button id="conversation-tab" type="button" role="tab" aria-selected="true" aria-controls="conversation">Conversation</button><button id="chat-tab" type="button" role="tab" aria-selected="false" aria-controls="chat" tabindex="-1">Live chat</button><button id="model-tab" type="button" role="tab" aria-selected="false" aria-controls="model-log" tabindex="-1">Model input / output</button></div><pre role="tabpanel" aria-labelledby="conversation-tab" id="conversation" tabindex="0" aria-label="Operator messages and player commentary"></pre><pre hidden role="tabpanel" aria-labelledby="chat-tab" id="chat" tabindex="0" aria-label="Live player log"></pre><div id="model-log" role="tabpanel" aria-labelledby="model-tab" tabindex="0" hidden><p class="model-hint">Waiting for the first model request. Shows the latest 20 requests; images are previewed below the request JSON.</p></div><button id="scroll-bottom" class="scroll-bottom" type="button" aria-controls="conversation" aria-label="Scroll Conversation to bottom" title="Scroll to the latest entry"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></section><section class="panel"><h2>Emulator</h2><div class="screen"><img id="game" alt="Live SkyEmu game screen"></div><p id="video-status" role="status">Waiting for emulator…</p></section></main>
 <footer><form id="form"><textarea id="message" rows="2" aria-label="Instruction to the player" placeholder="Tell the player what to do… Enter to send, Shift+Enter for a new line" maxlength="4000" required></textarea><button id="send" type="submit">Send &amp; resume</button></form><p id="notice" role="status">Each message pauses actions, adds your instruction, then resumes. Pause affects the AI; the game keeps running. Decisions appear when the model finishes.</p></footer>
 <script>
 const token='__TOKEN__',chat=document.querySelector('#chat'),status=document.querySelector('#status'),message=document.querySelector('#message'),notice=document.querySelector('#notice');
 let last=0,connected=true,busy=false,frameURL,logText="";
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function control(data){const response=await fetch('/control',{method:'POST',headers:{'Content-Type':'application/json','X-Operator-Token':token},body:JSON.stringify(data)});const result=await response.json();if(!response.ok)throw Error(result.error);}
+async function control(data){try{const response=await fetch('/control',{method:'POST',headers:{'Content-Type':'application/json','X-Operator-Token':token},body:JSON.stringify(data)});const result=await response.json();if(!response.ok)throw Error(result.error);clearBrowserError('control');}catch(error){reportBrowserError('control','Control request failed: '+error.message);throw error;}}
 for(const command of ['pause','resume','quit'])document.querySelector('#'+command).onclick=async()=>{try{await control({command:'/'+command});notice.textContent=command==='quit'?'Stopping after any outstanding model request returns…':'Command sent: /'+command;}catch(error){notice.textContent=error.message;}};
 document.querySelector('#form').onsubmit=async event=>{event.preventDefault();if(busy||!message.value.trim())return;busy=true;document.querySelector('#send').disabled=true;const text=message.value;try{await control({message:text});if(message.value===text)message.value='';notice.textContent='Instruction received. Pending actions invalidated; player resumed.';}catch(error){notice.textContent='Message not sent: '+error.message;}finally{busy=false;document.querySelector('#send').disabled=false;message.focus();}};
 message.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();document.querySelector('#form').requestSubmit();}};
@@ -32,10 +34,18 @@ function appendLog(text){
   const fragment=document.createDocumentFragment(),lines=logText.split('\n');
   for(let index=0;index<lines.length;index++){
     const line=lines[index];
-    if(line.startsWith('Action:')){
+    if(line.startsWith('Error:')||line.trim()==='Received: /pause'){
       const box=document.createElement('span'),label=document.createElement('strong');
-      box.className='action-box';label.className='action-label';label.textContent='Action:';
-      box.append(label,document.createTextNode(line.slice(7)));fragment.append(box);
+      box.className='error-box';label.className='error-label';label.textContent=line.startsWith('Error:')?'Error:':'Paused:';
+      let text=line.startsWith('Error:')?line.slice(6):' AI actions paused (/pause).';
+      while(index+1<lines.length&&lines[index+1].startsWith('          '))text+='\n'+lines[++index].slice(10);
+      box.append(label,document.createTextNode(text));fragment.append(box);
+    }else if(line.startsWith('Action:')||line.startsWith('Player:')){
+      const box=document.createElement('span'),label=document.createElement('strong');
+      box.className='action-box';label.className='action-label';label.textContent=line.slice(0,7);
+      let text=line.slice(7);
+      while(index+1<lines.length&&lines[index+1].startsWith('          '))text+='\n'+lines[++index].slice(10);
+      box.append(label,document.createTextNode(text));fragment.append(box);
     }else if(line.startsWith('Received:')&&!line.slice(9).trimStart().startsWith('/')){
       const box=document.createElement('span'),label=document.createElement('strong');
       box.className='received-box';label.className='received-label';label.textContent='Received:';
@@ -46,15 +56,62 @@ function appendLog(text){
     if(index<lines.length-1)fragment.append(document.createTextNode('\n'));
   }
   chat.replaceChildren(fragment);
+  renderConversation(lines);
 }
-async function events(){while(true){try{const response=await fetch('/events');if(!response.ok)throw Error('Connection lost');const data=await response.json();const follow=chat.scrollHeight-chat.scrollTop-chat.clientHeight<70;let added='';for(const [id,text] of data.lines){if(id>last){added+=text;last=id;}}if(added){appendLog(added);if(follow)chat.scrollTop=chat.scrollHeight;}connected=true;status.textContent=data.stopped?'Stopping…':data.paused?'AI paused':'AI running';}catch{connected=false;status.textContent='Disconnected · player exited or connection lost';}await delay(350);}}
-async function frames(){while(true){if(connected){try{const response=await fetch('/screen');if(!response.ok)throw Error();const next=URL.createObjectURL(await response.blob());const img=document.querySelector('#game');await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=next;});if(frameURL)URL.revokeObjectURL(frameURL);frameURL=next;document.querySelector('#video-status').textContent='Live game frames · no audio';}catch{document.querySelector('#video-status').textContent='Waiting for emulator…';}}await delay(100);}}
+function renderConversation(lines){
+  const fragment=document.createDocumentFragment();
+  for(let index=0;index<lines.length;index++){
+    const match=/^(Received:|Player:|Thoughts:|Error:)\s?(.*)$/.exec(lines[index]);
+    if(!match)continue;
+    let text=match[2];
+    while(index+1<lines.length&&lines[index+1].startsWith('          '))text+='\n'+lines[++index].slice(10);
+    const operator=match[1]==='Received:';
+    const error=match[1]==='Error:'||(operator&&text.trim()==='/pause');
+    if(error&&operator)text='AI actions paused (/pause).';
+    if(!text.trim()||(operator&&!error&&text.trimStart().startsWith('/')))continue;
+    if(!operator&&!/[\p{L}\p{N}]/u.test(text))continue;
+    const box=document.createElement('span'),label=document.createElement('strong');
+    box.className=error?'error-box':operator?'received-box':'player-box';
+    label.className=error?'error-label':operator?'received-label':'player-label';
+    label.textContent=error?(operator?'Paused: ':'Error: '):operator?'You: ':'Player: ';
+    box.append(label,document.createTextNode(text));fragment.append(box,document.createTextNode('\n'));
+  }
+  conversation.replaceChildren(fragment);
+}
+const browserErrors=new Map();
+function reportBrowserError(source,text){
+  if(browserErrors.get(source)===text)return;
+  browserErrors.set(source,text);
+  const logs=[conversation,chat],follow=logs.map(log=>log.scrollHeight-log.scrollTop-log.clientHeight<70);
+  appendLog('\nError: '+text.replace(/\n/g,'\n          ')+'\n');
+  logs.forEach((log,index)=>{if(follow[index])log.scrollTop=log.scrollHeight;});
+}
+function clearBrowserError(source){browserErrors.delete(source);}
+async function events(){while(true){try{
+  const response=await fetch('/events');if(!response.ok)throw Error('Connection lost');const data=await response.json();
+  const logs=[conversation,chat],follow=logs.map(log=>log.scrollHeight-log.scrollTop-log.clientHeight<70);
+  let added='';for(const [id,text] of data.lines){if(id>last){added+=text;last=id;}}
+  if(added){appendLog(added);logs.forEach((log,index)=>{if(follow[index])log.scrollTop=log.scrollHeight;});}
+  connected=true;status.textContent=data.stopped?'Stopping…':data.paused?'AI paused':'AI running';
+  clearBrowserError('events');
+}catch(error){connected=false;status.textContent='Disconnected · player exited or connection lost';reportBrowserError('events','Lost connection to the harness: '+error.message);}await delay(350);}}
+async function frames(){while(true){if(connected){try{const response=await fetch('/screen');if(!response.ok)throw Error('HTTP '+response.status);const next=URL.createObjectURL(await response.blob());const img=document.querySelector('#game');await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=next;});if(frameURL)URL.revokeObjectURL(frameURL);frameURL=next;clearBrowserError('screen');document.querySelector('#video-status').textContent='Live game frames · no audio';}catch(error){reportBrowserError('screen','Emulator frame unavailable: '+error.message);document.querySelector('#video-status').textContent='Waiting for emulator…';}}await delay(100);}}
 
-const modelLog=document.querySelector('#model-log'),tabs=[document.querySelector('#chat-tab'),document.querySelector('#model-tab')];
+const conversation=document.querySelector('#conversation'),modelLog=document.querySelector('#model-log');
+const tabs=[document.querySelector('#conversation-tab'),document.querySelector('#chat-tab'),document.querySelector('#model-tab')];
+const panels=[conversation,chat,modelLog],tabNames=['Conversation','Live chat','Model input / output'];
 const scrollBottom=document.querySelector('#scroll-bottom');
-scrollBottom.onclick=()=>{const log=chat.hidden?modelLog:chat;log.scrollTop=log.scrollHeight;};
-function selectTab(index){scrollBottom.setAttribute('aria-controls',index===0?'chat':'model-log');scrollBottom.setAttribute('aria-label','Scroll '+(index===0?'Live chat':'Model input / output')+' to bottom');tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',String(i===index));tab.tabIndex=i===index?0:-1;});chat.hidden=index!==0;modelLog.hidden=index!==1;}
-tabs.forEach((tab,index)=>{tab.onclick=()=>selectTab(index);tab.onkeydown=event=>{let next;if(event.key==='ArrowRight'||event.key==='ArrowLeft')next=1-index;else if(event.key==='Home')next=0;else if(event.key==='End')next=1;else return;event.preventDefault();selectTab(next);tabs[next].focus();};});
+scrollBottom.onclick=()=>{const log=panels.find(panel=>!panel.hidden);log.scrollTop=log.scrollHeight;};
+function selectTab(index){
+  scrollBottom.setAttribute('aria-controls',panels[index].id);
+  scrollBottom.setAttribute('aria-label','Scroll '+tabNames[index]+' to bottom');
+  tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',String(i===index));tab.tabIndex=i===index?0:-1;panels[i].hidden=i!==index;});
+}
+tabs.forEach((tab,index)=>{tab.onclick=()=>selectTab(index);tab.onkeydown=event=>{
+  let next;if(event.key==='ArrowRight')next=(index+1)%tabs.length;else if(event.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;
+  else if(event.key==='Home')next=0;else if(event.key==='End')next=tabs.length-1;else return;
+  event.preventDefault();selectTab(next);tabs[next].focus();
+};});
 function renderExchange(exchange){
   const card=document.createElement('article'),heading=document.createElement('h3');card.className='exchange';card.dataset.id=exchange.id;
   heading.textContent='Request '+exchange.id;card.append(heading);
@@ -105,7 +162,8 @@ async function modelEvents(){while(true){try{
     if(follow)modelLog.scrollTop=modelLog.scrollHeight;
   }
   modelRevision=data.revision;
-}catch{/* The main status indicator reports connection failures. */}await delay(700);}}
+  clearBrowserError('model-events');
+}catch(error){reportBrowserError('model-events','Could not load model input/output: '+error.message);}await delay(700);}}
 events();frames();modelEvents();
 </script>
 </html>

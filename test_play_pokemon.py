@@ -13,7 +13,7 @@ from play_pokemon import BUTTONS, TAP_SECONDS, RELEASE_SECONDS, ModelDecisionErr
 
 
 def action(button="A"):
-    return {"buttons": button if isinstance(button, list) else [button], "reason": "Advance dialogue", "memory": "In dialogue",
+    return {"operator_response": "", "buttons": button if isinstance(button, list) else [button], "reason": "Advance dialogue", "memory": "In dialogue",
             "result": {"status": "uncertain", "details": "The previous outcome is not yet clear."},
             "observation": "Dialogue page with a next indicator", "objective": "Finish the introduction",
             "plan": ["Advance this page", "Read the next page"], "expected_result": "A new dialogue page"}
@@ -27,6 +27,102 @@ def completion(*actions, finish_reason="tool_calls"):
 
 
 class HarnessTests(unittest.TestCase):
+    def test_punctuation_only_player_output_is_silent(self):
+        for placeholder in ('>', '">"', "'>'", ' >> ', '...', '…', '""'):
+            with self.subTest(placeholder=placeholder):
+                decision = action() | {"operator_response": placeholder, "commentary": placeholder}
+                parsed = parse_model_action(completion(decision))
+                self.assertEqual(parsed["operator_response"], "")
+                self.assertEqual(parsed["commentary"], "")
+                output = format_decision(1, decision, None)
+                self.assertNotIn("Player:", output)
+                self.assertNotIn("Thoughts:", output)
+
+    def test_placeholder_cannot_count_as_an_operator_answer(self):
+        session = Mock()
+        session.post.return_value.json.return_value = completion(
+            action() | {"operator_response": '">"', "commentary": '...'})
+        with self.assertRaisesRegex(ModelDecisionError, "Reply directly"):
+            choose_action(session, "key", "model", b"png", ["Play", "What next?"], "", [])
+
+    def test_real_player_text_preserves_symbols_and_other_languages(self):
+        for text in ('HP > 10, so we can keep exploring.', '좋아! 다음 체육관을 준비하자.', 'Level 5!'):
+            with self.subTest(text=text):
+                parsed = parse_model_action(completion(action() | {"commentary": text}))
+                self.assertEqual(parsed["commentary"], text)
+
+    def test_commentary_is_optional_and_printed_only_when_nonempty(self):
+        for value in (None, "", "   "):
+            decision = action() if value is None else action() | {"commentary": value}
+            self.assertNotIn("Thoughts:", format_decision(1, parse_model_action(completion(decision)), None))
+        thought = "I'm worried about the next gym. I'll train a balanced team before challenging it."
+        decision = action() | {"commentary": thought}
+        self.assertIn("Thoughts: " + thought, format_decision(1, decision, None))
+        _, _, _, choose, _ = self.run_mock_game([decision, action()])
+        self.assertEqual(choose.call_args.args[6][0]["commentary"], thought)
+
+    def test_commentary_can_answer_operator_without_duplicate_reply(self):
+        reply = "I'll check the summary to confirm its moves before we continue."
+        session = Mock()
+        session.post.return_value.json.return_value = completion(action("Start") | {"commentary": reply})
+        chosen = choose_action(session, "key", "model", b"png", ["Play", "What are its moves?"], "", [])
+        output = format_decision(1, chosen, None)
+        self.assertEqual(output.count(reply), 1)
+        chosen["operator_response"] = reply
+        self.assertEqual(format_decision(1, chosen, None).count(reply), 1)
+
+    def test_invalid_commentary_is_rejected(self):
+        for value in (None, [], 5):
+            with self.subTest(value=value), self.assertRaisesRegex(ModelDecisionError, "commentary"):
+                parse_model_action(completion(action() | {"commentary": value}))
+
+    def test_unanswered_question_requires_a_direct_reply(self):
+        session = Mock()
+        session.post.return_value.json.return_value = completion(action())
+        with self.assertRaisesRegex(ModelDecisionError, "Reply directly"):
+            choose_action(session, "key", "model", b"png",
+                          ["Play", "What are your starter's moves?"], "Continue the story", [])
+        payload = session.post.call_args.kwargs["json"]
+        context = json.loads(payload["messages"][1]["content"][0]["text"])
+        self.assertEqual(context["unanswered_operator_messages"], ["What are your starter's moves?"])
+
+    def test_reply_is_visible_and_retained_without_repeated_acknowledgments(self):
+        reply = "I haven't checked its moves yet. I'll open its summary now."
+        decision = action("Start") | {"operator_response": reply}
+        session = Mock()
+        session.post.return_value.json.return_value = completion(decision)
+        messages = ["Play", "What are its moves?"]
+        chosen = choose_action(session, "key", "model", b"png", messages, "", [])
+        self.assertIn("Player: " + reply, format_decision(1, chosen, None))
+        _, _, _, choose, _ = self.run_mock_game([decision, action()])
+        self.assertEqual(choose.call_args.args[6][0]["operator_response"], reply)
+        session.post.return_value.json.return_value = completion(action())
+        choose_action(session, "key", "model", b"png", messages, "", [], replied_messages=2)
+        context = json.loads(session.post.call_args.kwargs["json"]["messages"][1]["content"][0]["text"])
+        self.assertEqual(context["unanswered_operator_messages"], [])
+
+    def test_missing_reply_field_is_rejected(self):
+        decision = action()
+        del decision["operator_response"]
+        with self.assertRaisesRegex(ModelDecisionError, "operator_response"):
+            parse_model_action(completion(decision))
+
+    def test_discarded_inference_does_not_mark_new_messages_replied(self):
+        operator = Operator("Play")
+
+        def decisions():
+            operator.receive("What are its moves?")
+            yield action() | {"operator_response": "Stale reply"}
+            yield action("Start") | {"operator_response": "I'll check its summary now."}
+            yield action()
+
+        with patch("builtins.print") as output:
+            result, emulator, _, choose, _ = self.run_mock_game(decisions(), operator=operator, steps=3)
+        self.assertEqual(result, 0)
+        self.assertEqual(emulator.act.call_count, 2)
+        self.assertEqual([call.kwargs["replied_messages"] for call in choose.call_args_list], [1, 1, 2])
+        self.assertNotIn("Stale reply", str(output.call_args_list))
+
     def test_soul_is_included_with_controller_rules_in_model_request(self):
         session = Mock()
         session.post.return_value.json.return_value = completion(action())
@@ -101,8 +197,8 @@ class HarnessTests(unittest.TestCase):
             client.get.assert_called_once_with("https://openrouter.ai/api/v1/models", timeout=(10, 20))
             client.post.assert_not_called()
 
-    def run_mock_game(self, decisions, extra_args=(), environment=None, load_settings=False):
-        operator = Operator("Play")
+    def run_mock_game(self, decisions, extra_args=(), environment=None, load_settings=False, operator=None, steps=None):
+        operator = operator if operator is not None else Operator("Play")
         emulator = Mock()
         emulator.act.side_effect = lambda decision, *_: {"completed_taps": list(decision["buttons"]), "incomplete_tap": None, "skipped_taps": [], "sequence_completed": True}
         frames = []
@@ -116,7 +212,7 @@ class HarnessTests(unittest.TestCase):
         emulator.api.side_effect = emulator_api
         with ExitStack() as stack:
             stack.enter_context(patch.dict(os.environ, environment if environment is not None else {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_MODEL": "test-model"}, clear=True))
-            stack.enter_context(patch("sys.argv", ["play_pokemon.py", "--steps", str(len(decisions)), *extra_args]))
+            stack.enter_context(patch("sys.argv", ["play_pokemon.py", "--steps", str(len(decisions) if steps is None else steps), *extra_args]))
             if not load_settings:
                 stack.enter_context(patch("play_pokemon.load_env"))
             stack.enter_context(patch("play_pokemon.SkyEmu", return_value=emulator))

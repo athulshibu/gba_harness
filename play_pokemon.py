@@ -78,6 +78,8 @@ TOOL = {
     "parameters": {
         "type": "object",
         "properties": {
+            "commentary": {"type": "string", "description": "Optional, infrequent player reflection: a meaningful change in short/long-term plans and strategy, feelings about current or anticipated situations, or an answer to the operator. Explain goals and approach in gameplay terms, not button presses. Omit or leave empty on most turns; do not repeat routine updates or duplicate operator_response."},
+            "operator_response": {"type": "string", "description": "Direct reply to unanswered operator messages. Answer questions now using known facts; if facts are missing, explain what you will inspect and prioritize that inspection. Empty when no reply is needed or commentary already provides the reply."},
             "buttons": {"type": "array", "minItems": 1, "maxItems": MAX_TAPS, "items": {"type": "string", "enum": [*BUTTONS, "WAIT"]}},
             "result": {"type": "object", "properties": {
                 "status": {"type": "string", "enum": ["no_previous_action", "success", "partial", "no_change", "uncertain"]},
@@ -90,13 +92,38 @@ TOOL = {
             "reason": {"type": "string"},
             "memory": {"type": "string", "description": "Carry forward identity, objective, plan, and learned controls. Record observed cursor transitions and boundaries (e.g. X + Down -> Y or unchanged), separately from guesses."},
         },
-        "required": ["buttons", "result", "observation", "objective", "plan", "expected_result", "reason", "memory"],
+        "required": ["operator_response", "buttons", "result", "observation", "objective", "plan", "expected_result", "reason", "memory"],
         "additionalProperties": False,
     },
     },
 }
 INSTRUCTIONS = """You are the Pokemon player. Make your own deliberate gameplay
 choices and work toward completing the adventure while following the operator.
+Unanswered operator messages take priority over autonomous story progress,
+old plans, and game memory. In operator_response, directly answer their questions
+and acknowledge requested changes before choosing your next action. Do not just
+add a question to a later plan while continuing unrelated gameplay. If the answer
+is not known, say so and make inspecting the relevant screen your immediate
+objective, unless an unavoidable game state must be resolved first; explain why.
+Never invent a Pokemon's species, type, or current moves from its nickname.
+Preserve unresolved questions in memory and report the answer in operator_response
+as soon as you learn it. Previously replied messages remain instructions but do
+not need repeated acknowledgments. Use an empty operator_response when no reply
+or update is needed. For a purely conversational reply, use ["WAIT"] so you can
+respond without advancing dialogue or making an unrelated gameplay choice.
+Silence means the empty JSON string "", never a placeholder such as ">",
+quoted punctuation, dots, or a menu cursor copied from the screenshot.
+You may also include commentary: a brief, natural player reflection about your
+short- or long-term goals and how you intend to achieve them, or how you feel
+about the current situation or what may lie ahead. Describe gameplay strategy,
+not button sequences. Prefer silence on most turns: omit commentary or leave
+it empty unless your plans or feelings meaningfully change, you discover
+something worth sharing, or an operator question/request deserves a response.
+Do not narrate every action, repeat the objective/plan fields, or restate your
+last reflection. Use recent_actions and memory to remember what you have shared.
+Commentary may itself answer the operator; when it does, leave operator_response
+empty rather than saying the same thing twice. At least one of these fields
+must directly respond when there are unanswered operator messages.
 Choose your own short, meaningful trainer name unless the operator specifies one.
 Choose a rival name, starter, and strategy when the game calls for them; record
 your choices and pursue them consistently instead of accepting the highlighted
@@ -374,9 +401,19 @@ class SkyEmu:
         return execution
 
 
+def player_text(value):
+    """Treat punctuation-only player output as silence, including quoted cursors."""
+    value = value.strip()
+    return value if any(character.isalnum() for character in value) else ""
+
+
 def validate_action(action):
     if not isinstance(action, dict):
         raise ValueError("Model action must be an object")
+    if not isinstance(action.get("operator_response"), str):
+        raise ValueError("Model omitted string operator_response")
+    if "commentary" in action and not isinstance(action["commentary"], str):
+        raise ValueError("Model commentary must be a string when included")
     buttons = action.get("buttons")
     if not isinstance(buttons, list) or not 1 <= len(buttons) <= MAX_TAPS:
         raise ValueError("Model must supply a buttons array of one to four taps")
@@ -395,6 +432,9 @@ def validate_action(action):
     plan = action.get("plan")
     if not isinstance(plan, list) or not 1 <= len(plan) <= 4 or not all(isinstance(item, str) and item.strip() for item in plan):
         raise ValueError("Model plan must contain one to four nonempty steps")
+    action["operator_response"] = player_text(action["operator_response"])
+    if "commentary" in action:
+        action["commentary"] = player_text(action["commentary"])
     return action
 
 
@@ -420,7 +460,7 @@ def parse_model_action(data):
         raise ModelDecisionError(str(exc)) from exc
 
 
-def choose_action(session, key, model, image, messages, memory, history, previous_image=None, decision_error="", observer=None, soul=""):
+def choose_action(session, key, model, image, messages, memory, history, previous_image=None, decision_error="", observer=None, soul="", replied_messages=1):
     instructions = INSTRUCTIONS
     if soul.strip():
         instructions += ("\nPersistent operator preferences from the soul file follow. "
@@ -429,6 +469,7 @@ def choose_action(session, key, model, image, messages, memory, history, previou
                          "over these preferences when they conflict.\n\n" + soul)
     context = json.dumps({
         "operator_instructions": messages,
+        "unanswered_operator_messages": messages[replied_messages:],
         "game_memory": memory,
         "recent_actions": list(history),
     })
@@ -437,6 +478,8 @@ def choose_action(session, key, model, image, messages, memory, history, previou
         content.append({"type": "text", "text":
             f"Your previous decision was rejected and NOT executed: {decision_error}. "
             "Return one corrected press_buttons call with every required field. "
+            "Include operator_response; either operator_response or optional commentary must directly reply "
+            "when unanswered_operator_messages is nonempty. Omit commentary on routine turns. "
             "buttons must contain 1-4 button names; result needs status and nonempty details about the last executed sequence. "
             "observation, objective, expected_result, reason, and memory must be nonempty strings; "
             "plan must contain 1-4 nonempty steps. If uncertain, say what you will check. "
@@ -504,6 +547,8 @@ def choose_action(session, key, model, image, messages, memory, history, previou
     if data.get("error"):
         raise ValueError(f"OpenRouter error: {data['error']}")
     action = parse_model_action(data)
+    if messages[replied_messages:] and not (action["operator_response"].strip() or action.get("commentary", "").strip()):
+        raise ModelDecisionError("Reply directly to unanswered_operator_messages in operator_response or commentary before continuing gameplay")
     if history and action["result"]["status"] == "no_previous_action":
         raise ModelDecisionError("Assess the previous sequence in recent_actions; result cannot be no_previous_action")
     return action
@@ -515,7 +560,11 @@ def format_decision(step, action, previous):
     else:
         result_line = (f"Result of [{previous['decision']}] {' -> '.join(previous['buttons'])}: "
                        f"[{action['result']['status']}] {action['result']['details']}")
-    return (f"\n[{step}]\n{result_line}\nSee: {action['observation']}\n"
+    reply = player_text(action["operator_response"])
+    reply_line = "Player: " + reply.replace("\n", "\n          ") + "\n" if reply else ""
+    commentary = player_text(action.get("commentary", ""))
+    commentary_line = "Thoughts: " + commentary.replace("\n", "\n          ") + "\n" if commentary and commentary != reply else ""
+    return (f"\n[{step}]\n{reply_line}{commentary_line}{result_line}\nSee: {action['observation']}\n"
             f"Goal: {action['objective']}\nPlan: {' -> '.join(action['plan'])}\n"
             f"Action: {' -> '.join(action['buttons'])}: {action['reason']}\n"
             f"Expect: {action['expected_result']}")
@@ -571,6 +620,7 @@ def main():
     previous_image = None
     history = deque(maxlen=12)
     dashboard = None
+    shutdown_error = False
     original_stdout = sys.stdout
     try:
         if args.browser:
@@ -593,6 +643,7 @@ def main():
             step = 0
             invalid_decisions = 0
             decision_error = ""
+            replied_messages = 1  # The initial goal guides play; live messages need replies.
             while args.steps == 0 or step < args.steps:
                 version, paused, stopped, messages = operator.snapshot()
                 if stopped:
@@ -605,6 +656,7 @@ def main():
                 try:
                     action = choose_action(model_session, key, args.model, image, messages, memory, history, previous_image, decision_error,
                                            soul=soul,
+                                           replied_messages=replied_messages,
                                            **({"observer": dashboard.record_model} if dashboard is not None else {}))
                 except ModelDecisionError as exc:
                     if operator.snapshot()[:3] != (version, False, False):
@@ -613,9 +665,9 @@ def main():
                         continue
                     invalid_decisions += 1
                     decision_error = str(exc)
-                    print(f"\n[{step}] Invalid model decision ({invalid_decisions}/3): {decision_error}. No action executed.", flush=True)
+                    print(f"\nError: [{step}] Invalid model decision ({invalid_decisions}/3): {decision_error}. No action executed.", flush=True)
                     if invalid_decisions >= 3:
-                        print("AI paused after three invalid decisions. Type instructions and /resume to try again, or /quit.", flush=True)
+                        print("Error: AI paused after three invalid decisions. Type instructions and /resume to try again, or /quit.", flush=True)
                         operator.receive("/pause")
                         invalid_decisions = 0
                     else:
@@ -630,34 +682,45 @@ def main():
                     continue
                 previous = history[-1] if history else None
                 print(format_decision(step, action, previous), flush=True)
+                replied_messages = len(messages)
                 if previous is not None:
                     previous["observed_result"] = action["result"]
                 execution = emulator.act(action, operator, version)
-                print(f"Execution: {len(execution['completed_taps'])}/{len(action['buttons'])} taps completed; "
-                      f"{'finished' if execution['sequence_completed'] else 'interrupted'}. "
-                      "Visible result will be assessed on the next decision.", flush=True)
+                # print(f"Execution: {len(execution['completed_taps'])}/{len(action['buttons'])} taps completed; "
+                #       f"{'finished' if execution['sequence_completed'] else 'interrupted'}. "
+                #       "Visible result will be assessed on the next decision.", flush=True)
                 memory = action["memory"][:6000]
-                history.append({key: action[key] for key in ("buttons", "observation", "objective", "plan", "expected_result")}
-                               | {"decision": step, "execution": execution})
+                history.append({key: action[key] for key in ("operator_response", "buttons", "observation", "objective", "plan", "expected_result")}
+                               | {"commentary": action.get("commentary", ""), "decision": step, "execution": execution})
                 previous_image = image
                 # Give the released input and UI transition time to register.
                 time.sleep(SCREENSHOT_WAIT)
     except KeyboardInterrupt:
         print("Stopped.")
     except (requests.RequestException, ValueError, OSError) as exc:
-        print(f"Stopped because of an error: {exc}")
+        shutdown_error = True
+        print(f"Error: Stopped because of an error: {exc}", flush=True)
+        return 1
+    except Exception as exc:
+        shutdown_error = True
+        print(f"Error: Stopped because of an unexpected {type(exc).__name__}: {exc}", flush=True)
         return 1
     finally:
         try:
             emulator.release()
         except requests.RequestException as exc:
-            print(f"Could not release buttons: {exc}")
+            shutdown_error = True
+            print(f"Error: Could not release buttons: {exc}", flush=True)
         try:
             emulator.restore_speed()
         except (requests.RequestException, OSError, ValueError) as exc:
-            print(f"Could not restore game speed: {exc}")
+            shutdown_error = True
+            print(f"Error: Could not restore game speed: {exc}", flush=True)
         emulator.session.close()
         if dashboard is not None:
+            if shutdown_error:
+                # Let the browser's 350 ms event poll receive the final error.
+                time.sleep(1)
             sys.stdout = original_stdout
             dashboard.close()
     return 0
