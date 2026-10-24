@@ -134,8 +134,11 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    Commentary is intended for occasional changes in broader plans, strategy,
    feelings about the adventure, or operator answers, rather than button
    descriptions. It may be omitted or empty and is only printed when nonempty.
-   The model is prompted to keep it infrequent and avoid repeating itself;
-   there is no fixed interval or cooldown for meaningful updates.
+   The model is instructed to announce its initial plan, new goals, and
+   meaningful changes in strategy in the same decision, even without an
+   operator message. Continuing an already announced plan can stay quiet.
+   There is no speaking interval or turn quota; recognizing meaningful plan
+   changes and explaining them is guided by the prompt.
    A background thread receives them while the model is thinking. If they
    change before an action starts, that action is discarded and the next
    decision uses the new instructions. A message during a button press cuts

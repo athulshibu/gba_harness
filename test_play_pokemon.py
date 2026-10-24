@@ -27,6 +27,18 @@ def completion(*actions, finish_reason="tool_calls"):
 
 
 class HarnessTests(unittest.TestCase):
+    def test_quiet_turns_do_not_trigger_a_speaking_quota(self):
+        session = Mock()
+        session.post.return_value.json.return_value = completion(action())
+        for quiet_turns in (0, 9, 10, 20):
+            with self.subTest(quiet_turns=quiet_turns):
+                chosen = choose_action(session, "key", "model", b"png", ["Play"], "Continuing the same plan",
+                                       [action() for _ in range(quiet_turns)])
+                self.assertEqual(chosen["operator_response"], "")
+                self.assertNotIn("commentary", chosen)
+                context = json.loads(session.post.call_args.kwargs["json"]["messages"][1]["content"][0]["text"])
+                self.assertNotIn("commentary_schedule", context)
+
     def test_punctuation_only_player_output_is_silent(self):
         for placeholder in ('>', '">"', "'>'", ' >> ', '...', '…', '""'):
             with self.subTest(placeholder=placeholder):

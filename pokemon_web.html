@@ -65,6 +65,7 @@ function renderConversation(lines){
     if(!match)continue;
     let text=match[2];
     while(index+1<lines.length&&lines[index+1].startsWith('          '))text+='\n'+lines[++index].slice(10);
+    if(match[1]==='Error:'&&/^\[\d+\] Invalid model decision \([12]\/3\):/.test(text))continue;
     const operator=match[1]==='Received:';
     const error=match[1]==='Error:'||(operator&&text.trim()==='/pause');
     if(error&&operator)text='AI actions paused (/pause).';

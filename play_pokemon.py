@@ -78,7 +78,7 @@ TOOL = {
     "parameters": {
         "type": "object",
         "properties": {
-            "commentary": {"type": "string", "description": "Optional, infrequent player reflection: a meaningful change in short/long-term plans and strategy, feelings about current or anticipated situations, or an answer to the operator. Explain goals and approach in gameplay terms, not button presses. Omit or leave empty on most turns; do not repeat routine updates or duplicate operator_response."},
+            "commentary": {"type": "string", "description": "Viewer update: include whenever you adopt a new goal or meaningfully change your plan or strategy. Explain what you intend to achieve, how, and why in gameplay terms, not button presses. May also share feelings, discoveries, future plans, or answer the operator. Optional on turns continuing an already announced plan; avoid repetition and duplicating operator_response."},
             "operator_response": {"type": "string", "description": "Direct reply to unanswered operator messages. Answer questions now using known facts; if facts are missing, explain what you will inspect and prioritize that inspection. Empty when no reply is needed or commentary already provides the reply."},
             "buttons": {"type": "array", "minItems": 1, "maxItems": MAX_TAPS, "items": {"type": "string", "enum": [*BUTTONS, "WAIT"]}},
             "result": {"type": "object", "properties": {
@@ -113,12 +113,20 @@ or update is needed. For a purely conversational reply, use ["WAIT"] so you can
 respond without advancing dialogue or making an unrelated gameplay choice.
 Silence means the empty JSON string "", never a placeholder such as ">",
 quoted punctuation, dots, or a menu cursor copied from the screenshot.
-You may also include commentary: a brief, natural player reflection about your
+Use commentary for a brief, natural player reflection about your
 short- or long-term goals and how you intend to achieve them, or how you feel
 about the current situation or what may lie ahead. Describe gameplay strategy,
-not button sequences. Prefer silence on most turns: omit commentary or leave
-it empty unless your plans or feelings meaningfully change, you discover
-something worth sharing, or an operator question/request deserves a response.
+not button sequences. Share spontaneous reflections when your plans or feelings
+change or you discover something worth sharing; do not wait to be spoken to.
+Whenever you adopt a new goal or meaningfully change your plan or strategy,
+include commentary in that same decision so the viewer knows what you intend
+to do, how you will approach it, and why. This includes choosing your initial
+plan, moving to a new objective after finishing one, and changing approach
+when stuck. Announce these changes proactively even if the operator is silent.
+Continuing an already announced plan or choosing its next button is not a new
+plan. Quiet turns are fine in that case; there is no turn-based speaking quota.
+Be honest if your goals or feelings have not changed. Remember your last
+announced plan in memory so you can recognize and explain meaningful changes.
 Do not narrate every action, repeat the objective/plan fields, or restate your
 last reflection. Use recent_actions and memory to remember what you have shared.
 Commentary may itself answer the operator; when it does, leave operator_response
@@ -479,7 +487,7 @@ def choose_action(session, key, model, image, messages, memory, history, previou
             f"Your previous decision was rejected and NOT executed: {decision_error}. "
             "Return one corrected press_buttons call with every required field. "
             "Include operator_response; either operator_response or optional commentary must directly reply "
-            "when unanswered_operator_messages is nonempty. Omit commentary on routine turns. "
+            "when unanswered_operator_messages is nonempty. Include commentary whenever you adopt a new goal or meaningfully change your plan or strategy. "
             "buttons must contain 1-4 button names; result needs status and nonempty details about the last executed sequence. "
             "observation, objective, expected_result, reason, and memory must be nonempty strings; "
             "plan must contain 1-4 nonempty steps. If uncertain, say what you will check. "
