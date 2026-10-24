@@ -16,8 +16,8 @@ def ask(label, default="", *, required=False, choices=()):
             return value
 
 
-def ask_path(label):
-    value = ask(label)
+def ask_path(label, default=""):
+    value = ask(label, default)
     # Accept paths pasted using Windows' Copy as path command.
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
         value = value[1:-1]
@@ -43,9 +43,9 @@ def main():
             "OPENROUTER_API_KEY": key,
             "OPENROUTER_MODEL": ask("OpenRouter model", "google/gemini-2.5-flash"),
         }
-        print("For automatic launch, enter both paths. Leave both blank to open SkyEmu manually.")
-        settings["SKYEMU_EXE"] = ask_path("SkyEmu executable path (optional)")
-        settings["POKEMON_ROM"] = ask_path("Pokemon ROM path (optional)")
+        print("For automatic launch, enter a ROM path. The default executable is beside play_pokemon.py.")
+        settings["SKYEMU_EXE"] = ask_path("SkyEmu executable path", "SkyEmu-v5-Windows.exe")
+        settings["GAME_ROM"] = ask_path("Pokemon ROM path (optional)")
         settings["SKYEMU_SPEED"] = ask("Game speed (1 = normal, 2 = fast forward)", "2", choices=("1", "2"))
         settings["SKYEMU_URL"] = ask("SkyEmu server URL", "http://127.0.0.1:8080")
     except (EOFError, KeyboardInterrupt):

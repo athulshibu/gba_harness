@@ -1,6 +1,7 @@
 # Secrets and game ROMs
 .env
-.env.*
+*.env
+*.env.*
 !.env.example
 *.gba
 

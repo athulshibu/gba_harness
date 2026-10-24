@@ -54,7 +54,7 @@ def load_env(path):
             continue
         name, value = line.split("=", 1)
         name, value = name.strip(), value.strip()
-        if name not in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "SKYEMU_EXE", "POKEMON_ROM", "SKYEMU_SPEED", "SKYEMU_URL"):
+        if name not in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "SKYEMU_EXE", "GAME_ROM", "SKYEMU_SPEED", "SKYEMU_URL"):
             continue
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
             value = value[1:-1]
@@ -238,16 +238,16 @@ class SkyEmu:
                 raise ValueError(f"{setting} is not a file: {path}")
             return path
 
-        rom_path = configured_file(rom, "POKEMON_ROM") if rom else None
+        rom_path = configured_file(rom, "GAME_ROM") if rom else None
         try:
             online = self.reply_text(self.api("ping", timeout=5)) == "pong"
         except requests.RequestException:
             online = False
         if not online:
             if not executable:
-                raise ValueError("SkyEmu is offline. Set SKYEMU_EXE and POKEMON_ROM in .env to launch it automatically.")
+                raise ValueError("SkyEmu is offline. Set SKYEMU_EXE and GAME_ROM in .env to launch it automatically.")
             if rom_path is None:
-                raise ValueError("Set POKEMON_ROM in .env to launch SkyEmu with your game.")
+                raise ValueError("Set GAME_ROM in .env to launch SkyEmu with your game.")
             url = urlsplit(self.base)
             if url.scheme != "http" or url.hostname not in ("127.0.0.1", "localhost", "::1"):
                 raise ValueError("Automatic launch requires a local http:// SKYEMU_URL (or --base).")
@@ -274,14 +274,14 @@ class SkyEmu:
             if not status.get("rom-loaded") or not same_rom:
                 print("Loading ROM:", rom_path, flush=True)
                 if self.reply_text(self.api("load_rom", path=str(rom_path), pause=1)) != "ok":
-                    raise ValueError(f"SkyEmu could not load POKEMON_ROM: {rom_path}")
+                    raise ValueError(f"SkyEmu could not load GAME_ROM: {rom_path}")
                 status = self.status()
                 if not status.get("rom-loaded"):
                     raise ValueError("SkyEmu did not report a loaded ROM after load_rom.")
             else:
                 print("Configured ROM is already loaded; continuing current game.", flush=True)
         if not status.get("rom-loaded"):
-            raise ValueError("No ROM loaded. Set POKEMON_ROM in .env or open a game in SkyEmu.")
+            raise ValueError("No ROM loaded. Set GAME_ROM in .env or open a game in SkyEmu.")
 
     def set_speed(self, speed):
         if speed not in (1, 2):
@@ -506,7 +506,7 @@ def main():
     history = deque(maxlen=12)
     try:
         print("OpenRouter model:", args.model, flush=True)
-        emulator.prepare(os.getenv("SKYEMU_EXE", ""), os.getenv("POKEMON_ROM", ""), Path(__file__).resolve().parent)
+        emulator.prepare(os.getenv("SKYEMU_EXE") or "SkyEmu-v5-Windows.exe", os.getenv("GAME_ROM", ""), Path(__file__).resolve().parent)
         print("Connection:", emulator.reply_text(emulator.api("ping")))
         emulator.release()
         emulator.api("run")

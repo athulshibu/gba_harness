@@ -6,9 +6,23 @@ It uses OpenRouter with the existing `requests` installation; no additional SDK 
 
 ## Run in PowerShell
 
-1. In SkyEmu, enable HTTP Control Server in the advanced settings on port 8080
+First, run the setup launcher from the project folder:
+
+```powershell
+cmd /k .\setup_codespace.bat
+```
+
+It creates `codespace` if needed, activates it, and installs `requests` and
+`pillow`. The command leaves a Command Prompt open with the environment active.
+You can also run `setup_codespace.bat` from an existing Command Prompt.
+
+1. Activate the environment 
+   ```powershell
+   .\codespace\Scripts\activate.bat
+   ```
+2. In SkyEmu, enable HTTP Control Server in the advanced settings on port 8080
    once. The normal game window uses this saved setting when launched.
-2. Create an API key at [OpenRouter](https://openrouter.ai/settings/keys).
+3. Create an API key at [OpenRouter](https://openrouter.ai/settings/keys).
    Create `.env` beside `play_pokemon.py` with the setup helper:
 
    ```powershell
@@ -23,13 +37,15 @@ It uses OpenRouter with the existing `requests` installation; no additional SDK 
    ```dotenv
    OPENROUTER_API_KEY=your-openrouter-api-key
    OPENROUTER_MODEL=google/gemini-2.5-flash
-   SKYEMU_EXE="C:\Emulators\SkyEmu\SkyEmu.exe"
-   POKEMON_ROM="C:\Games\Pokemon Emerald.gba"
+   SKYEMU_EXE=SkyEmu-v5-Windows.exe
+   GAME_ROM="C:\Games\Pokemon_Emerald.gba"
    SKYEMU_SPEED=2
    SKYEMU_URL=http://127.0.0.1:8080
    ```
 
-   Use your actual executable and ROM paths during setup, then run
+   The executable defaults to `SkyEmu-v5-Windows.exe` beside `play_pokemon.py`,
+   including when `SKYEMU_EXE` is missing or blank. Set another executable
+   path to override it. Use your actual ROM path during setup, then run
    (SkyEmu can be closed):
 
    ```powershell
@@ -40,7 +56,7 @@ It uses OpenRouter with the existing `requests` installation; no additional SDK 
    different settings file, pass `--env-file`:
 
    ```powershell
-   .\codespace\Scripts\python.exe .\play_pokemon.py --env-file .\another.env --steps 20
+   .\codespace\Scripts\python.exe .\play_pokemon.py --env-file .\my.env --steps 0
    ```
 
    Relative settings paths use the current terminal directory; absolute paths
@@ -55,13 +71,13 @@ It uses OpenRouter with the existing `requests` installation; no additional SDK 
    around values. Keep each setting on its own line.
 
    The harness launches the visible SkyEmu window when its control server is
-   offline, waits up to 20 seconds for it, and loads `POKEMON_ROM`. Paths can
+   offline, waits up to 20 seconds for it, and loads `GAME_ROM`. Paths can
    contain spaces and Windows backslashes. Relative paths are resolved beside
    `play_pokemon.py`. If the server is already running with that same ROM,
    the harness continues the current game without reloading it. A different
    configured ROM is loaded from its normal boot sequence; this does not
    restore an emulator save state. SkyEmu's usual in-game save handling applies.
-   Leave both paths empty to keep opening SkyEmu and your ROM manually.
+   Leave `GAME_ROM` empty to keep opening SkyEmu and your ROM manually.
 
    `SKYEMU_SPEED=2` holds SkyEmu's 2x fast-forward input during play. Use `1`
    for normal speed, or pass `--speed 1` / `--speed 2` to override the file.
@@ -86,7 +102,7 @@ It uses OpenRouter with the existing `requests` installation; no additional SDK 
    continuously. Missing credentials or a model ID cause an error before the
    emulator is controlled.
 
-3. Type messages into the same terminal while it plays, then press Enter:
+4. Type messages into the same terminal while it plays, then press Enter:
 
    ```text
    Catch the next Pikachu you encounter.
@@ -205,3 +221,11 @@ may already have been submitted. If verification keeps failing, check VPN,
 proxy, or antivirus HTTPS inspection, or test on another trusted network.
 The retry does not repair a consistently invalid or weak certificate. No TLS
 security settings or certificate checks are disabled.
+
+
+## Important Links
+
+- [SkyEmu](https://sourceforge.net/projects/skyemu.mirror/)
+- [VS Code](https://code.visualstudio.com/)
+- [Tabby v1.0.238](https://github.com/Eugeny/tabby/releases/tag/v1.0.238)
+- [Git for Windows](https://git-scm.com/install/windows)

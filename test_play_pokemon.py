@@ -120,6 +120,16 @@ class HarnessTests(unittest.TestCase):
                 self.assertEqual(error.exception.code, 2)
                 emulator.assert_not_called()
 
+    def test_executable_default_and_override(self):
+        for configured in (None, "", "custom/SkyEmu.exe"):
+            with self.subTest(configured=configured):
+                environment = {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_MODEL": "test-model"}
+                if configured is not None:
+                    environment["SKYEMU_EXE"] = configured
+                result, emulator, _, _, _ = self.run_mock_game([action()], environment=environment)
+                self.assertEqual(result, 0)
+                self.assertEqual(emulator.prepare.call_args.args[0], configured or "SkyEmu-v5-Windows.exe")
+
     def test_invalid_decision_retries_with_feedback_and_a_fresh_screen(self):
         error = ModelDecisionError("Model omitted nonempty expected_result")
         result, emulator, operator, choose, frames = self.run_mock_game([error, action()])
@@ -179,10 +189,10 @@ class HarnessTests(unittest.TestCase):
     def test_load_env_accepts_emulator_paths_without_unescaping_backslashes(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
             path = Path(directory) / ".env"
-            path.write_text('SKYEMU_EXE="C:\\Emulators\\Sky Emu.exe"\nPOKEMON_ROM=C:\\Games\\Pokemon.gba\nSKYEMU_SPEED=2\nSKYEMU_URL=http://localhost:8080\n')
+            path.write_text('SKYEMU_EXE="C:\\Emulators\\Sky Emu.exe"\nGAME_ROM=C:\\Games\\Pokemon.gba\nSKYEMU_SPEED=2\nSKYEMU_URL=http://localhost:8080\n')
             load_env(path)
             self.assertEqual(os.environ["SKYEMU_EXE"], r"C:\Emulators\Sky Emu.exe")
-            self.assertEqual(os.environ["POKEMON_ROM"], r"C:\Games\Pokemon.gba")
+            self.assertEqual(os.environ["GAME_ROM"], r"C:\Games\Pokemon.gba")
             self.assertEqual(os.environ["SKYEMU_SPEED"], "2")
 
     def test_prepare_reuses_matching_game_without_reloading_or_launching(self):
@@ -234,7 +244,7 @@ class HarnessTests(unittest.TestCase):
     def test_missing_rom_is_reported_before_launch(self):
         with tempfile.TemporaryDirectory() as directory, patch("play_pokemon.subprocess.Popen") as launch:
             emulator = SkyEmu("http://localhost:8080")
-            with self.assertRaisesRegex(ValueError, "POKEMON_ROM is not a file"):
+            with self.assertRaisesRegex(ValueError, "GAME_ROM is not a file"):
                 emulator.prepare("missing.exe", "missing.gba", Path(directory))
             launch.assert_not_called()
 
