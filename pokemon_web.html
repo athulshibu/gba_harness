@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pokemon live player</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10141d;color:#e5eaf3;font:15px system-ui,sans-serif;height:100dvh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:16px;padding:16px 24px;border-bottom:1px solid #30394c}h1{font-size:19px;margin:0}#status{color:#9cb4cd;font-size:13px;margin-right:auto}button{background:#293750;color:#eff5ff;border:1px solid #465b7b;border-radius:8px;padding:9px 15px;cursor:pointer}button:hover{background:#3c4e6d}button:disabled{opacity:.5;cursor:default}
+main{display:grid;grid-template-columns:1fr 1fr;flex:1;min-height:0}.panel{display:flex;flex-direction:column;padding:20px;min-height:0;min-width:0}.panel+ .panel{border-left:1px solid #30394c}h2{margin:0 0 12px;color:#a5b8d3;font-size:12px;text-transform:uppercase;letter-spacing:2px}#chat{margin:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.65 ui-monospace,Consolas,monospace;flex:1}.screen{position:relative;display:flex;align-items:center;justify-content:center;flex:1;min-height:0;background:#080b11;border-radius:12px;overflow:hidden}#game{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}#video-status{font-size:12px;color:#96aac3;margin:10px 0 0}
+footer{border-top:1px solid #30394c;padding:16px 24px}form{display:flex;gap:12px}textarea{resize:none;background:#1a2230;color:#fff;border:1px solid #465b7b;border-radius:8px;font:15px/1.5 system-ui;padding:10px;flex:1;min-width:0}#notice{margin:8px 0 0;color:#9cb4cd;font-size:12px}button[type=submit]{background:#396cd0} @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:1fr 1fr}.panel{padding:12px}.panel+ .panel{border-left:0;border-top:1px solid #30394c}header{padding:12px;gap:8px}h1{font-size:15px}footer{padding:12px}}
+#chat .action-box,.exchange .action-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#142e35;border:1px solid #398b98;border-left:4px solid #6ee7d8;border-radius:8px;color:#a5f3e5;vertical-align:top}#chat .action-label,.exchange .action-label{color:#67e8f9;font-weight:700}.exchange details{margin:8px 0}
+
+[hidden]{display:none!important}.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button[aria-selected=true]{background:#396cd0;border-color:#77a4ff}.tabs button{font-size:13px}
+#model-log{overflow:auto;flex:1;min-height:0;font:13px/1.6 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}.exchange{border:1px solid #30394c;border-radius:8px;padding:12px;margin-bottom:14px}.exchange h3{margin:0 0 8px;font:600 14px system-ui;color:#a5f3e5}.exchange pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}.exchange summary{cursor:pointer;color:#a5b8d3}.model-image{max-width:100%;width:240px;image-rendering:pixelated;display:block;margin:8px 0}.model-hint{color:#9cb4cd;font:12px/1.5 system-ui}
+</style>
+<header><h1>Pokemon live player</h1><span id="status" role="status">Connecting…</span><button id="pause" type="button">Pause</button><button id="resume" type="button">Resume</button><button id="quit" type="button">Stop</button></header>
+<main><section class="panel"><h2>Live chat · decisions &amp; instructions</h2><div class="tabs" role="tablist" aria-label="Live chat views"><button id="chat-tab" type="button" role="tab" aria-selected="true" aria-controls="chat">Live chat</button><button id="model-tab" type="button" role="tab" aria-selected="false" aria-controls="model-log" tabindex="-1">Model input / output</button></div><pre role="tabpanel" aria-labelledby="chat-tab" id="chat" tabindex="0" aria-label="Live player log"></pre><div id="model-log" role="tabpanel" aria-labelledby="model-tab" tabindex="0" hidden><p class="model-hint">Waiting for the first model request. Shows the latest 20 requests; images are previewed below the request JSON.</p></div></section><section class="panel"><h2>Emulator</h2><div class="screen"><img id="game" alt="Live SkyEmu game screen"></div><p id="video-status" role="status">Waiting for emulator…</p></section></main>
+<footer><form id="form"><textarea id="message" rows="2" aria-label="Instruction to the player" placeholder="Tell the player what to do… Enter to send, Shift+Enter for a new line" maxlength="4000" required></textarea><button id="send" type="submit">Send &amp; resume</button></form><p id="notice" role="status">Each message pauses actions, adds your instruction, then resumes. Pause affects the AI; the game keeps running. Decisions appear when the model finishes.</p></footer>
+<script>
+const token='__TOKEN__',chat=document.querySelector('#chat'),status=document.querySelector('#status'),message=document.querySelector('#message'),notice=document.querySelector('#notice');
+let last=0,connected=true,busy=false,frameURL,logText="";
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function control(data){const response=await fetch('/control',{method:'POST',headers:{'Content-Type':'application/json','X-Operator-Token':token},body:JSON.stringify(data)});const result=await response.json();if(!response.ok)throw Error(result.error);}
+for(const command of ['pause','resume','quit'])document.querySelector('#'+command).onclick=async()=>{try{await control({command:'/'+command});notice.textContent=command==='quit'?'Stopping after any outstanding model request returns…':'Command sent: /'+command;}catch(error){notice.textContent=error.message;}};
+document.querySelector('#form').onsubmit=async event=>{event.preventDefault();if(busy||!message.value.trim())return;busy=true;document.querySelector('#send').disabled=true;const text=message.value;try{await control({message:text});if(message.value===text)message.value='';notice.textContent='Instruction received. Pending actions invalidated; player resumed.';}catch(error){notice.textContent='Message not sent: '+error.message;}finally{busy=false;document.querySelector('#send').disabled=false;message.focus();}};
+message.onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();document.querySelector('#form').requestSubmit();}};
+function appendLog(text){
+  logText=(logText+text).slice(-250000);
+  const fragment=document.createDocumentFragment(),lines=logText.split('\n');
+  lines.forEach((line,index)=>{
+    if(line.startsWith('Action:')){
+      const box=document.createElement('span'),label=document.createElement('strong');
+      box.className='action-box';label.className='action-label';label.textContent='Action:';
+      box.append(label,document.createTextNode(line.slice(7)));fragment.append(box);
+    }else fragment.append(document.createTextNode(line));
+    if(index<lines.length-1)fragment.append(document.createTextNode('\n'));
+  });
+  chat.replaceChildren(fragment);
+}
+async function events(){while(true){try{const response=await fetch('/events');if(!response.ok)throw Error('Connection lost');const data=await response.json();const follow=chat.scrollHeight-chat.scrollTop-chat.clientHeight<70;let added='';for(const [id,text] of data.lines){if(id>last){added+=text;last=id;}}if(added){appendLog(added);if(follow)chat.scrollTop=chat.scrollHeight;}connected=true;status.textContent=data.stopped?'Stopping…':data.paused?'AI paused':'AI running';}catch{connected=false;status.textContent='Disconnected · player exited or connection lost';}await delay(350);}}
+async function frames(){while(true){if(connected){try{const response=await fetch('/screen');if(!response.ok)throw Error();const next=URL.createObjectURL(await response.blob());const img=document.querySelector('#game');await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=next;});if(frameURL)URL.revokeObjectURL(frameURL);frameURL=next;document.querySelector('#video-status').textContent='Live game frames · no audio';}catch{document.querySelector('#video-status').textContent='Waiting for emulator…';}}await delay(100);}}
+
+const modelLog=document.querySelector('#model-log'),tabs=[document.querySelector('#chat-tab'),document.querySelector('#model-tab')];
+function selectTab(index){tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',String(i===index));tab.tabIndex=i===index?0:-1;});chat.hidden=index!==0;modelLog.hidden=index!==1;}
+tabs.forEach((tab,index)=>{tab.onclick=()=>selectTab(index);tab.onkeydown=event=>{let next;if(event.key==='ArrowRight'||event.key==='ArrowLeft')next=1-index;else if(event.key==='Home')next=0;else if(event.key==='End')next=1;else return;event.preventDefault();selectTab(next);tabs[next].focus();};});
+function renderExchange(exchange){
+  const card=document.createElement('article'),heading=document.createElement('h3');card.className='exchange';card.dataset.id=exchange.id;
+  heading.textContent='Request '+exchange.id;card.append(heading);
+  const previews=[];
+  // Keep JSON readable while retaining the actual images as previews.
+  const request=JSON.stringify(exchange.request,(key,value)=>{
+    if(key==='url'&&typeof value==='string'&&value.startsWith('data:image/png;base64,')){previews.push(value);return '[Screenshot '+previews.length+' ? preview below]';}return value;
+  },2);
+  const input=document.createElement('details'),label=document.createElement('summary'),body=document.createElement('pre');
+  label.textContent='Input - full request JSON';body.textContent=request;input.append(label,body);
+  previews.forEach((url,i)=>{const img=document.createElement('img');img.className='model-image';img.alt='Model input screenshot '+(i+1);img.src=url;input.append(img);});card.append(input);
+  const outputDetails=document.createElement('details'),outputLabel=document.createElement('summary'),output=document.createElement('pre');outputLabel.textContent='Output - raw model response';
+  output.textContent=exchange.error!==undefined?'Request failed: '+exchange.error:exchange.response!==undefined?JSON.stringify(exchange.response,null,2):'Waiting for model response...';outputDetails.append(outputLabel,output);card.append(outputDetails);
+  const actionBox=document.createElement('div'),actionLabel=document.createElement('strong');actionBox.className='action-box';actionLabel.className='action-label';actionLabel.textContent='Action: ';
+  let actionText=exchange.error!==undefined?'Request failed.':exchange.response===undefined?'Waiting for model response...':'No readable press_buttons action returned.';
+  try{
+    const calls=exchange.response?.choices?.[0]?.message?.tool_calls;
+    if(Array.isArray(calls)&&calls.length===1&&calls[0].function?.name==='press_buttons'){
+      const args=calls[0].function.arguments,action=typeof args==='string'?JSON.parse(args):args;
+      if(Array.isArray(action?.buttons)&&action.buttons.length&&action.buttons.every(button=>typeof button==='string')){
+        actionText=action.buttons.join(' -> ')+(typeof action.reason==='string'&&action.reason?': '+action.reason:'');
+      }
+    }
+  }catch{/* Keep malformed responses available in the Output dropdown. */}
+  actionBox.append(actionLabel,document.createTextNode(actionText));actionBox.title='Proposed by the model; execution is reported in Live chat.';card.append(actionBox);return card;
+}
+let modelRevision=-1;
+async function modelEvents(){while(true){try{
+  const response=await fetch('/model-events?after='+modelRevision);if(!response.ok)throw Error();const data=await response.json();
+  if(data.exchanges){
+    const follow=!modelLog.hidden&&modelLog.scrollHeight-modelLog.scrollTop-modelLog.clientHeight<70;
+    const existing=new Map(Array.from(modelLog.querySelectorAll('.exchange'),card=>[Number(card.dataset.id),card]));
+    if(data.exchanges.length)modelLog.querySelector('.model-hint')?.remove();
+    for(const exchange of data.exchanges){
+      const signature=JSON.stringify(exchange),old=existing.get(exchange.id);
+      if(old?.modelSignature===signature)continue;
+      const card=renderExchange(exchange);card.modelSignature=signature;
+      if(old){const previousDetails=old.querySelectorAll('details');card.querySelectorAll('details').forEach((details,index)=>{details.open=previousDetails[index]?.open??false;});old.replaceWith(card);}else modelLog.append(card);
+    }
+    const ids=new Set(data.exchanges.map(exchange=>exchange.id));for(const [id,card] of existing)if(!ids.has(id))card.remove();
+    if(follow)modelLog.scrollTop=modelLog.scrollHeight;
+  }
+  modelRevision=data.revision;
+}catch{/* The main status indicator reports connection failures. */}await delay(700);}}
+events();frames();modelEvents();
+</script>
+</html>
