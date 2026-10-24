@@ -587,7 +587,10 @@ def main():
                         help="Persistent AI instructions (default: SOUL.md beside this script); relative paths use the current directory; overrides SOUL_FILE")
     parser.add_argument("--steps", type=int, default=20, help="Maximum decisions; 0 runs until stopped (default: 20)")
     parser.add_argument("--check-connection", action="store_true", help="Test verified OpenRouter HTTPS without an API key, paid inference, or emulator")
-    parser.add_argument("--browser", action="store_true", help="Open local live chat and emulator view")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--browser", dest="browser", action="store_true", help="Open local live chat and emulator view (default)")
+    mode.add_argument("--terminal", dest="browser", action="store_false", help="Use terminal input without opening the browser view")
+    parser.set_defaults(browser=True)
     parser.add_argument("--web-port", type=int, default=8765, help="Local browser port (default: 8765; 0 selects a free port)")
     args = parser.parse_args()
     if args.check_connection:

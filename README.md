@@ -112,7 +112,8 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    continuously. Missing credentials or a model ID cause an error before the
    emulator is controlled.
 
-4. Type messages into the same terminal while it plays, then press Enter:
+4. Send messages through the browser while it plays. For terminal input instead,
+   launch with `--terminal`, then type messages into the same terminal and press Enter:
 
    ```text
    Catch the next Pikachu you encounter.
@@ -178,12 +179,15 @@ tab keeps the latest 20 requests in memory, showing the complete request JSON
 decisions and request errors. Requests appear while inference is pending.
 Authorization headers are excluded and the API key is redacted.
 
-Open a browser with the live chat log on the left, the emulator on the right,
-and an instruction box at the bottom:
+Browser mode is the default, with the live chat log on the left, the emulator
+on the right, and an instruction box at the bottom:
 
 ```powershell
-.\codespace\Scripts\python.exe .\play_pokemon.py --browser --steps 0
+.\codespace\Scripts\python.exe .\play_pokemon.py --steps 0
 ```
+
+Use `--terminal` for terminal input without the browser view. The existing
+`--browser` option is also accepted.
 
 The browser opens automatically at `http://127.0.0.1:8765`. If it does not,
 open the printed URL yourself. Use `--web-port 8766` if that port is busy,

@@ -197,7 +197,7 @@ class HarnessTests(unittest.TestCase):
             client.get.assert_called_once_with("https://openrouter.ai/api/v1/models", timeout=(10, 20))
             client.post.assert_not_called()
 
-    def run_mock_game(self, decisions, extra_args=(), environment=None, load_settings=False, operator=None, steps=None):
+    def run_mock_game(self, decisions, extra_args=(), environment=None, load_settings=False, operator=None, steps=None, default_mode=False):
         operator = operator if operator is not None else Operator("Play")
         emulator = Mock()
         emulator.act.side_effect = lambda decision, *_: {"completed_taps": list(decision["buttons"]), "incomplete_tap": None, "skipped_taps": [], "sequence_completed": True}
@@ -212,7 +212,8 @@ class HarnessTests(unittest.TestCase):
         emulator.api.side_effect = emulator_api
         with ExitStack() as stack:
             stack.enter_context(patch.dict(os.environ, environment if environment is not None else {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_MODEL": "test-model"}, clear=True))
-            stack.enter_context(patch("sys.argv", ["play_pokemon.py", "--steps", str(len(decisions) if steps is None else steps), *extra_args]))
+            mode_args = [] if default_mode or "--browser" in extra_args else ["--terminal"]
+            stack.enter_context(patch("sys.argv", ["play_pokemon.py", *mode_args, "--steps", str(len(decisions) if steps is None else steps), *extra_args]))
             if not load_settings:
                 stack.enter_context(patch("play_pokemon.load_env"))
             stack.enter_context(patch("play_pokemon.SkyEmu", return_value=emulator))
@@ -245,6 +246,17 @@ class HarnessTests(unittest.TestCase):
         dashboard.return_value.close.assert_called_once_with()
         emulator.act.assert_called_once()
         self.assertIs(sys.stdout, original)
+
+    def test_browser_is_default_and_terminal_can_be_selected(self):
+        for args in ([], ["--terminal"]):
+            with self.subTest(args=args), patch("pokemon_web.Dashboard") as dashboard:
+                result, _, _, _, _ = self.run_mock_game([action()], args, default_mode=True)
+                self.assertEqual(result, 0)
+                if args:
+                    dashboard.assert_not_called()
+                else:
+                    dashboard.return_value.start.assert_called_once_with()
+                    dashboard.return_value.close.assert_called_once_with()
 
     def test_custom_env_file_supplies_defaults_and_respects_overrides(self):
         with tempfile.TemporaryDirectory() as directory:
