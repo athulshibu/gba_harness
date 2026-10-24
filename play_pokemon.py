@@ -418,7 +418,7 @@ def parse_model_action(data):
         raise ModelDecisionError(str(exc)) from exc
 
 
-def choose_action(session, key, model, image, messages, memory, history, previous_image=None, decision_error=""):
+def choose_action(session, key, model, image, messages, memory, history, previous_image=None, decision_error="", observer=None):
     context = json.dumps({
         "operator_instructions": messages,
         "game_memory": memory,
@@ -442,24 +442,42 @@ def choose_action(session, key, model, image, messages, memory, history, previou
         {"type": "text", "text": "CURRENT screenshot. Choose the next action using this screen:"},
         {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(image).decode("ascii")}},
     ])
-    response = verified_request(session.post,
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {key}"},
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": INSTRUCTIONS},
-                {"role": "user", "content": content}],
-            "tools": [TOOL],
-            # Haiku providers support auto but reject required/named choices.
-            # The prompt requests our tool; local validation requires it.
-            "tool_choice": "auto",
-            # Some vision providers do not support parallel_tool_calls. We
-            # enforce exactly one call locally instead of restricting routing.
-            "provider": {"require_parameters": True},
-        },
-        timeout=(10, 90),
-    )
+    def report(kind, value):
+        if observer is not None:
+            # Only payloads are exposed; headers never enter the dashboard.
+            encoded = json.dumps(value)
+            if key:
+                encoded = encoded.replace(json.dumps(key)[1:-1], "[REDACTED]")
+            observer(kind, json.loads(encoded))
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": INSTRUCTIONS},
+            {"role": "user", "content": content}],
+        "tools": [TOOL],
+        # Haiku providers support auto but reject required/named choices.
+        # The prompt requests our tool; local validation requires it.
+        "tool_choice": "auto",
+        # Some vision providers do not support parallel_tool_calls. We
+        # enforce exactly one call locally instead of restricting routing.
+        "provider": {"require_parameters": True},
+    }
+    report("request", payload)
+    try:
+        response = verified_request(session.post,
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json=payload, timeout=(10, 90))
+    except requests.RequestException as exc:
+        report("error", str(exc))
+        raise
+    try:
+        data = response.json()
+    except ValueError:
+        report("response", {"status": response.status_code, "body": response.text})
+    else:
+        report("response", data)
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
@@ -565,7 +583,8 @@ def main():
                 image = emulator.api("screen").content
                 step += 1
                 try:
-                    action = choose_action(model_session, key, args.model, image, messages, memory, history, previous_image, decision_error)
+                    action = choose_action(model_session, key, args.model, image, messages, memory, history, previous_image, decision_error,
+                                           **({"observer": dashboard.record_model} if dashboard is not None else {}))
                 except ModelDecisionError as exc:
                     if operator.snapshot()[:3] != (version, False, False):
                         invalid_decisions = 0

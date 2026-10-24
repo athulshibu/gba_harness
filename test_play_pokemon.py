@@ -478,6 +478,43 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(payload["provider"], {"require_parameters": True})
         self.assertEqual(payload["tool_choice"], "auto")
 
+    def test_model_observer_receives_request_before_inference_and_raw_rejected_response(self):
+        events = []
+        session = Mock()
+        raw = {"choices": [{"message": {"content": "I would press A."}}]}
+
+        def respond(*args, **kwargs):
+            self.assertEqual(events[0][0], "request")
+            return Mock(json=Mock(return_value=raw))
+
+        session.post.side_effect = respond
+        with self.assertRaises(ModelDecisionError):
+            choose_action(session, "test-secret", "test-model", b"png", ["Play"], "", [],
+                          observer=lambda kind, payload: events.append((kind, payload)))
+        self.assertEqual([kind for kind, _ in events], ["request", "response"])
+        self.assertEqual(events[0][1], session.post.call_args.kwargs["json"])
+        self.assertEqual(events[1][1], raw)
+        self.assertNotIn("test-secret", json.dumps(events))
+
+    def test_model_observer_reports_transport_errors_and_redacts_provider_echoed_key(self):
+        for failure in (True, False):
+            with self.subTest(transport_failure=failure):
+                events = []
+                session = Mock()
+                if failure:
+                    session.post.side_effect = requests.ReadTimeout("Failed test-secret")
+                else:
+                    response = requests.Response()
+                    response.status_code = 502
+                    response._content = b'{"error":{"message":"Failed test-secret"}}'
+                    session.post.return_value = response
+                with self.assertRaises((requests.RequestException, ValueError)):
+                    choose_action(session, "test-secret", "test-model", b"png", [], "", [],
+                                  observer=lambda kind, payload: events.append((kind, payload)))
+                self.assertEqual(events[-1][0], "error" if failure else "response")
+                self.assertNotIn("test-secret", json.dumps(events))
+                self.assertIn("[REDACTED]", json.dumps(events))
+
     def test_haiku_uses_auto_tool_selection_with_validated_taps(self):
         session = Mock()
         session.post.return_value.json.return_value = completion(action(["Left", "A"]))

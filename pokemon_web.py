@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import secrets
 import threading
+from urllib.parse import parse_qs, urlsplit
 import webbrowser
 
 import requests
@@ -19,6 +20,9 @@ class Dashboard:
         self.lock = threading.Lock()
         self.lines = deque(maxlen=2000)
         self.sequence = 0
+        self.model_exchanges = deque(maxlen=20)
+        self.model_revision = 0
+        self.model_sequence = 0
         self.token = secrets.token_urlsafe(32)
         self.server = ThreadingHTTPServer(("127.0.0.1", port), self.handler())
         self.server.daemon_threads = True
@@ -34,6 +38,17 @@ class Dashboard:
 
     def flush(self):
         self.terminal.flush()
+
+    def record_model(self, kind, payload):
+        # Snapshot now: gameplay history is mutated after inference finishes.
+        payload = json.loads(json.dumps(payload))
+        with self.lock:
+            if kind == "request":
+                self.model_sequence += 1
+                self.model_exchanges.append({"id": self.model_sequence, "request": payload})
+            elif self.model_exchanges:
+                self.model_exchanges[-1][kind] = payload
+            self.model_revision += 1
 
     def start(self):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -96,6 +111,14 @@ class Dashboard:
                         self.respond(200, response.content, "image/png")
                     except requests.RequestException:
                         self.respond(503, b'{"error":"Waiting for emulator"}')
+                elif path == "/model-events":
+                    after = parse_qs(urlsplit(self.path).query).get("after", [""])[0]
+                    with dashboard.lock:
+                        body = {"revision": dashboard.model_revision}
+                        if after != str(dashboard.model_revision):
+                            body["exchanges"] = list(dashboard.model_exchanges)
+                        encoded = json.dumps(body).encode()
+                    self.respond(200, encoded)
                 else:
                     self.respond(404, b'{"error":"Not found"}')
 

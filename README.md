@@ -130,6 +130,12 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
 
 ## Browser view
 
+The left panel has **Live chat** and **Model input / output** tabs. The model
+tab keeps the latest 20 requests in memory, showing the complete request JSON
+(expand Input), screenshot previews, and raw responses, including rejected
+decisions and request errors. Requests appear while inference is pending.
+Authorization headers are excluded and the API key is redacted.
+
 Open a browser with the live chat log on the left, the emulator on the right,
 and an instruction box at the bottom:
 

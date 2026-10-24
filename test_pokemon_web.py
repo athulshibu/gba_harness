@@ -93,6 +93,31 @@ class BrowserTests(unittest.TestCase):
             proxy.get.side_effect = requests.ConnectionError("offline")
             self.assertEqual(self.session.get(self.base + "/screen", timeout=3).status_code, 503)
 
+    def test_model_exchange_is_snapshotted_and_updates_after_response(self):
+        request = {"messages": [{"content": "original"}]}
+        self.dashboard.record_model("request", request)
+        request["messages"][0]["content"] = "changed"
+        result = self.session.get(self.base + "/model-events", timeout=3).json()
+        self.assertEqual(result["exchanges"][0]["request"]["messages"][0]["content"], "original")
+        self.assertNotIn("response", result["exchanges"][0])
+        unchanged = self.session.get(self.base + f"/model-events?after={result['revision']}", timeout=3).json()
+        self.assertNotIn("exchanges", unchanged)
+        self.dashboard.record_model("response", {"choices": []})
+        updated = self.session.get(self.base + f"/model-events?after={result['revision']}", timeout=3).json()
+        self.assertEqual(updated["exchanges"][0]["response"], {"choices": []})
+        self.assertGreater(updated["revision"], result["revision"])
+
+    def test_model_exchange_retention_and_host_check(self):
+        for index in range(25):
+            self.dashboard.record_model("request", {"model": str(index)})
+            self.dashboard.record_model("error", "Offline")
+        result = self.session.get(self.base + "/model-events", timeout=3).json()
+        self.assertEqual(len(result["exchanges"]), 20)
+        self.assertEqual(result["exchanges"][0]["id"], 6)
+        self.assertEqual(result["exchanges"][-1]["error"], "Offline")
+        response = self.session.get(self.base + "/model-events", headers={"Host": "evil.invalid"}, timeout=3)
+        self.assertEqual(response.status_code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()
