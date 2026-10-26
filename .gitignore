@@ -5,6 +5,9 @@
 !.env.example
 *.gba
 
+# Automatically learned gameplay progress
+game_memory/
+
 # Test files
 *.png
 

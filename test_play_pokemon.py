@@ -14,6 +14,9 @@ from play_pokemon import BUTTONS, TAP_SECONDS, RELEASE_SECONDS, ModelDecisionErr
 
 def action(button="A"):
     return {"operator_response": "", "buttons": button if isinstance(button, list) else [button], "reason": "Advance dialogue", "memory": "In dialogue",
+            "memory_update": {"current_location": "unknown",
+                              "goal_hierarchy": {"main_goal": "Complete Pokemon Emerald", "subgoal": "Begin the adventure", "task": "Finish the introduction"},
+                              "events": [], "observed_facts": [], "hypotheses": [], "forget_knowledge": []},
             "result": {"status": "uncertain", "details": "The previous outcome is not yet clear."},
             "observation": "Dialogue page with a next indicator", "objective": "Finish the introduction",
             "plan": ["Advance this page", "Read the next page"], "expected_result": "A new dialogue page"}
@@ -223,9 +226,10 @@ class HarnessTests(unittest.TestCase):
 
         emulator.api.side_effect = emulator_api
         with ExitStack() as stack:
+            memory_directory = stack.enter_context(tempfile.TemporaryDirectory())
             stack.enter_context(patch.dict(os.environ, environment if environment is not None else {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_MODEL": "test-model"}, clear=True))
             mode_args = [] if default_mode or "--browser" in extra_args else ["--terminal"]
-            stack.enter_context(patch("sys.argv", ["play_pokemon.py", *mode_args, "--steps", str(len(decisions) if steps is None else steps), *extra_args]))
+            stack.enter_context(patch("sys.argv", ["play_pokemon.py", *mode_args, "--memory-dir", memory_directory, "--steps", str(len(decisions) if steps is None else steps), *extra_args]))
             if not load_settings:
                 stack.enter_context(patch("play_pokemon.load_env"))
             stack.enter_context(patch("play_pokemon.SkyEmu", return_value=emulator))
@@ -314,7 +318,7 @@ class HarnessTests(unittest.TestCase):
         retry = choose.call_args_list[1].args
         self.assertEqual(retry[3], b"frame1")
         self.assertIn("expected_result", retry[-1])
-        self.assertEqual(retry[5], "No previous observations.")
+        self.assertEqual(retry[5]["working_memory"]["notes"], "No previous observations.")
         self.assertIsNone(retry[7])
         self.assertFalse(operator.snapshot()[1])
 
