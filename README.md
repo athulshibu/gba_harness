@@ -29,7 +29,7 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    .\codespace\Scripts\python.exe .\create_env.py
    ```
 
-   The helper asks for your API key (hidden while typing), model, executable
+   The helper asks for your API key (hidden while typing), main model, optional decision model, executable
    and ROM paths, speed, and server URL, then saves `.env`. Press Enter to use
    the displayed defaults or leave optional paths blank. It asks before
    replacing an existing `.env`. The resulting file looks like:
@@ -37,6 +37,7 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    ```dotenv
    OPENROUTER_API_KEY=your-openrouter-api-key
    OPENROUTER_MODEL=google/gemini-2.5-flash
+   OPENROUTER_DECISION_MODEL=
    SKYEMU_EXE=SkyEmu-v5-Windows.exe
    GAME_ROM="C:\Games\Pokemon_Emerald.gba"
    SKYEMU_SPEED=2
@@ -273,6 +274,31 @@ remains, with a disconnected status. Stop may wait for an outstanding model
 request to return or time out. Each run starts a new session log.
 
 ## How it works
+
+Set `OPENROUTER_DECISION_MODEL=perplexity/pplx-decider-v1.2` in `.env` to send every
+turn to a separate vision decision model first. Other models must support image
+state and OpenRouter's Decisions API (`/api/alpha/decisions`).
+The main model remains configured by `OPENROUTER_MODEL`. The router returns:
+
+- `WAIT`: wait without pressing a button while dialogue or animation finishes.
+- `ADVANCE`: tap A once to advance a completed ordinary dialogue page.
+- `MODEL`: send the same screenshots, instructions, memory, and history to the
+  main model for its normal gameplay decision.
+
+Menus, battles, naming, choices, consequential confirmations, and uncertain
+screens are routed to the main model by the router's instructions. The first
+turn, unanswered operator messages, and correction attempts always invoke the
+main model after routing. Malformed router replies also fall back to the main
+model. Dialogue shortcuts retain the main model's goals and notes and record
+actual execution without claiming observed success. The router still relies
+on image interpretation, so it can misclassify screens.
+
+Both models use the same OpenRouter API key and appear in the browser's model
+request view. Each router call incurs its own API usage; `MODEL` turns also call
+the main model. `--steps` counts turns, including shortcut turns, rather than
+individual API calls. Use `--decision-model provider/model` to override the
+environment, or `--decision-model ""` to disable routing. A blank or absent
+`OPENROUTER_DECISION_MODEL` keeps the original main-model-only behavior.
 
 The harness captures `/screen`, sends the image plus instructions, concise
 game notes, and the last 12 actions to OpenRouter's Chat Completions API, then validates a

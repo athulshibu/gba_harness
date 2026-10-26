@@ -115,7 +115,7 @@ tabs.forEach((tab,index)=>{tab.onclick=()=>selectTab(index);tab.onkeydown=event=
 };});
 function renderExchange(exchange){
   const card=document.createElement('article'),heading=document.createElement('h3');card.className='exchange';card.dataset.id=exchange.id;
-  heading.textContent='Request '+exchange.id;card.append(heading);
+  heading.textContent='Request '+exchange.id+(exchange.request?.model?' · '+exchange.request.model:'');card.append(heading);
   const previews=[];
   // Keep JSON readable while retaining the actual images as previews.
   const request=JSON.stringify(exchange.request,(key,value)=>{
@@ -136,6 +136,15 @@ function renderExchange(exchange){
   const actionBox=document.createElement('div'),actionLabel=document.createElement('strong');actionBox.className='action-box';actionLabel.className='action-label';actionLabel.textContent='Action: ';
   let actionText=exchange.error!==undefined?'Request failed.':exchange.response===undefined?'Waiting for model response...':'No readable press_buttons action returned.';
   try{
+    if(exchange.request?.questions?.route){
+      actionLabel.textContent='Route: ';
+      const route=exchange.response?.answers?.route;
+      if(exchange.response!==undefined&&exchange.error===undefined){
+        actionText=route?.type==='choice'&&['WAIT','ADVANCE','MODEL'].includes(route.choice)
+          ?route.choice:'Invalid route; falling back to main model.';
+      }
+      actionBox.title='Routing recommendation; first turns, operator replies, and corrections require the main model.';
+    }
     const calls=exchange.response?.choices?.[0]?.message?.tool_calls;
     if(Array.isArray(calls)&&calls.length===1&&calls[0].function?.name==='press_buttons'){
       const args=calls[0].function.arguments,action=typeof args==='string'?JSON.parse(args):args;
@@ -144,7 +153,7 @@ function renderExchange(exchange){
       }
     }
   }catch{/* Keep malformed responses available in the Output dropdown. */}
-  actionBox.append(actionLabel,document.createTextNode(actionText));actionBox.title='Proposed by the model; execution is reported in Live chat.';card.append(actionBox);return card;
+  actionBox.append(actionLabel,document.createTextNode(actionText));if(!actionBox.title)actionBox.title='Proposed by the model; execution is reported in Live chat.';card.append(actionBox);return card;
 }
 let modelRevision=-1;
 async function modelEvents(){while(true){try{

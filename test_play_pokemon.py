@@ -30,6 +30,119 @@ def completion(*actions, finish_reason="tool_calls"):
 
 
 class HarnessTests(unittest.TestCase):
+    def router_memory(self):
+        from game_memory import GameMemory
+        with tempfile.TemporaryDirectory() as directory:
+            store = GameMemory(Path(directory), "Pokemon Emerald", "Complete Pokemon Emerald")
+            store.accept(action())
+            return store.context()
+
+    def router_reply(self, route, answer_type="choice"):
+        return {"answers": {"route": {"type": answer_type, "choice": route,
+                                     "probabilities": {"WAIT": 0.1, "ADVANCE": 0.1, "MODEL": 0.8}}}}
+
+    def test_router_shortcuts_wait_and_advance_preserve_planner_memory(self):
+        for route, buttons in (("WAIT", ["WAIT"]), ("ADVANCE", ["A"])):
+            with self.subTest(route=route):
+                memory = self.router_memory()
+                session = Mock()
+                session.post.return_value.json.return_value = self.router_reply(route)
+                chosen = choose_action(session, "key", "main", b"current", ["Play"], memory,
+                                       [action()], b"previous", decision_model="router")
+                session.post.assert_called_once()
+                self.assertEqual(session.post.call_args.args[0], "https://openrouter.ai/api/alpha/decisions")
+                payload = session.post.call_args.kwargs["json"]
+                self.assertEqual(set(payload["questions"]["route"]["criteria"]), {"WAIT", "ADVANCE", "MODEL"})
+                self.assertEqual(chosen["buttons"], buttons)
+                self.assertEqual(chosen["memory"], memory["working_memory"]["notes"])
+                self.assertEqual(chosen["memory_update"]["goal_hierarchy"], memory["working_memory"]["goal_hierarchy"])
+                self.assertEqual(chosen["memory_update"]["events"], [])
+                self.assertEqual(chosen["result"]["status"], "uncertain")
+                validate_action(chosen)
+
+    def test_router_model_forwards_identical_input_and_reports_both_exchanges(self):
+        session = Mock()
+        events = []
+        session.post.side_effect = [Mock(json=Mock(return_value=self.router_reply("MODEL"))),
+                                    Mock(json=Mock(return_value=completion(action())))]
+        chosen = choose_action(session, "secret", "main", b"current", ["Play"], self.router_memory(),
+                               [action()], b"previous", soul="Choose Mudkip", decision_model="router",
+                               observer=lambda kind, payload: events.append((kind, payload)))
+        self.assertEqual(chosen["buttons"], ["A"])
+        router, planner = [call.kwargs["json"] for call in session.post.call_args_list]
+        self.assertEqual(router["model"], "router")
+        self.assertEqual(planner["model"], "main")
+        self.assertEqual(router["state"], planner["messages"][1]["content"])
+        self.assertIn("Choose Mudkip", router["questions"]["route"]["instructions"])
+        self.assertEqual([kind for kind, _ in events], ["request", "response", "request", "response"])
+        self.assertNotIn("secret", json.dumps(events))
+
+    def test_router_cannot_bypass_initial_plan_unanswered_messages_or_corrections(self):
+        for history, messages, error in (([], ["Play"], ""),
+                                          ([action()], ["Play", "Stop advancing"], ""),
+                                          ([action()], ["Play"], "Invalid action")):
+            with self.subTest(messages=messages, error=error, history=history):
+                session = Mock()
+                answer = action() | {"operator_response": "I will stop advancing."}
+                session.post.side_effect = [Mock(json=Mock(return_value=self.router_reply("ADVANCE"))),
+                                            Mock(json=Mock(return_value=completion(answer)))]
+                choose_action(session, "key", "main", b"png", messages, self.router_memory(), history,
+                              decision_error=error, decision_model="router")
+                self.assertEqual(session.post.call_count, 2)
+
+    def test_invalid_router_output_falls_back_to_main_without_guessing_buttons(self):
+        for reply in (self.router_reply("A"), self.router_reply("ADVANCE", "noul"),
+                      self.router_reply(None), {"answers": {}}):
+            with self.subTest(reply=reply):
+                session = Mock()
+                session.post.side_effect = [Mock(json=Mock(return_value=reply)),
+                                            Mock(json=Mock(return_value=completion(action("Left"))))]
+                chosen = choose_action(session, "key", "main", b"png", ["Play"], self.router_memory(),
+                                       [action()], decision_model="router")
+                self.assertEqual(chosen["buttons"], ["Left"])
+                self.assertEqual(session.post.call_count, 2)
+
+    def test_decision_model_env_and_cli_precedence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "router.env"
+            path.write_text('OPENROUTER_API_KEY=key\nOPENROUTER_MODEL=main\nOPENROUTER_DECISION_MODEL=file/router\n', encoding="utf-8")
+            for overrides, environment, expected in (([], {}, "file/router"),
+                ([], {"OPENROUTER_DECISION_MODEL": "shell/router"}, "shell/router"),
+                (["--decision-model", "cli/router"], {}, "cli/router"),
+                (["--decision-model", ""], {}, "")):
+                with self.subTest(expected=expected):
+                    result, _, _, choose, _ = self.run_mock_game([action()],
+                        ["--env-file", str(path), *overrides], environment=environment, load_settings=True)
+                    self.assertEqual(result, 0)
+                    self.assertEqual(choose.call_args.kwargs["decision_model"], expected)
+
+    def test_create_env_saves_decision_model_and_can_disable_it(self):
+        import create_env
+        for router in ("perplexity/pplx-decider-v1.2", ""):
+            with self.subTest(router=router), tempfile.TemporaryDirectory() as directory:
+                script = Path(directory) / "create_env.py"
+                with patch.object(create_env, "__file__", str(script)), \
+                     patch.object(create_env, "getpass", return_value="test-key"), \
+                     patch("builtins.input", side_effect=["main/model", router, "", "", "", ""]), \
+                     patch("builtins.print"):
+                    create_env.main()
+                with patch.dict(os.environ, {}, clear=True):
+                    load_env(script.with_name(".env"))
+                    self.assertEqual(os.environ["OPENROUTER_DECISION_MODEL"], router)
+
+    def test_dialogue_shortcuts_run_through_execution_and_history(self):
+        from play_pokemon import dialogue_action
+        waiting = dialogue_action("WAIT", self.router_memory())
+        advancing = dialogue_action("ADVANCE", self.router_memory())
+        result, emulator, _, choose, frames = self.run_mock_game([action(), waiting, advancing, action()])
+        self.assertEqual(result, 0)
+        self.assertEqual([call.args[0]["buttons"] for call in emulator.act.call_args_list],
+                         [["A"], ["WAIT"], ["A"], ["A"]])
+        history = choose.call_args_list[-1].args[6]
+        self.assertEqual(history[1]["buttons"], ["WAIT"])
+        self.assertEqual(history[2]["buttons"], ["A"])
+        self.assertEqual(choose.call_args_list[-1].args[7], frames[-2])
+
     def test_quiet_turns_do_not_trigger_a_speaking_quota(self):
         session = Mock()
         session.post.return_value.json.return_value = completion(action())
