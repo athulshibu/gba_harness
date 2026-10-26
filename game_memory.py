@@ -12,6 +12,25 @@ ENTRY_SCHEMA = {
     "properties": {"text": {"type": "string"}, "evidence": {"type": "string"}},
     "required": ["text", "evidence"], "additionalProperties": False,
 }
+NAVIGATION_TASK_SCHEMA = {
+    "type": ["object", "null"],
+    "description": "Main model's navigation assignment for the submodel, or null when no delegation is appropriate.",
+    "properties": {name: {"type": "string"} for name in
+                   ("destination", "instructions", "arrival_condition", "constraints")},
+    "required": ["destination", "instructions", "arrival_condition", "constraints"],
+    "additionalProperties": False,
+}
+
+
+def validate_navigation_task(task):
+    if task is None:
+        return
+    if (not isinstance(task, dict) or set(task) != set(NAVIGATION_TASK_SCHEMA["required"])
+            or not all(isinstance(value, str) and value.strip() and len(value) <= 2000
+                       for value in task.values())):
+        raise ValueError("navigation_task needs nonempty destination, instructions, arrival_condition, and constraints (max 2000 characters each), or null")
+
+
 MEMORY_UPDATE_SCHEMA = {
     "type": "object",
     "description": "Update persistent notes from the CURRENT observation, never predicted outcomes. Use empty arrays when nothing was learned.",
@@ -79,6 +98,7 @@ class GameMemory:
                 "last_action": None, "last_result": None, "active_plan": [],
                 "goal_hierarchy": {"main_goal": main_goal, "subgoal": "Assess current progress", "task": "Inspect the current screen"},
                 "notes": "No previous observations.",
+                "navigation_task": None,
             },
             "episodic_memory": [],
             "knowledge": {"observed_facts": [], "hypotheses": []},
@@ -87,6 +107,8 @@ class GameMemory:
             try:
                 saved = json.loads(self.path.read_text(encoding="utf-8"))
                 working = saved["working_memory"]
+                validate_navigation_task(working.get("navigation_task"))
+                working.setdefault("navigation_task", None)
                 if saved["version"] != 1 or working["game"] != game:
                     raise ValueError("memory version or game does not match; select a separate --memory-dir")
                 # Validate before allowing subsequent writes over existing notes.
@@ -143,8 +165,12 @@ class GameMemory:
         """Persist an accepted plan before executing; no predicted event is inferred."""
         update = action["memory_update"]
         validate_memory_update(update)
+        if "navigation_task" in action:
+            validate_navigation_task(action["navigation_task"])
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         working = self.data["working_memory"]
+        if "navigation_task" in action:
+            working["navigation_task"] = deepcopy(action["navigation_task"])
         if working["last_action"] is not None:
             result = deepcopy(action["result"])
             if result["status"] == "no_previous_action":

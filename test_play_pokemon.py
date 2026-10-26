@@ -52,7 +52,7 @@ class HarnessTests(unittest.TestCase):
                 session.post.assert_called_once()
                 self.assertEqual(session.post.call_args.args[0], "https://openrouter.ai/api/alpha/decisions")
                 payload = session.post.call_args.kwargs["json"]
-                self.assertEqual(set(payload["questions"]["route"]["criteria"]), {"WAIT", "ADVANCE", "MODEL"})
+                self.assertEqual(set(payload["questions"]["route"]["criteria"]), {"WAIT", "ADVANCE", "SUBMODEL", "MODEL"})
                 self.assertEqual(chosen["buttons"], buttons)
                 self.assertEqual(chosen["memory"], memory["working_memory"]["notes"])
                 self.assertEqual(chosen["memory_update"]["goal_hierarchy"], memory["working_memory"]["goal_hierarchy"])
@@ -123,12 +123,154 @@ class HarnessTests(unittest.TestCase):
                 script = Path(directory) / "create_env.py"
                 with patch.object(create_env, "__file__", str(script)), \
                      patch.object(create_env, "getpass", return_value="test-key"), \
-                     patch("builtins.input", side_effect=["main/model", router, "", "", "", ""]), \
+                     patch("builtins.input", side_effect=["main/model", router, "navigation/model", "", "", "", ""]), \
                      patch("builtins.print"):
                     create_env.main()
                 with patch.dict(os.environ, {}, clear=True):
                     load_env(script.with_name(".env"))
                     self.assertEqual(os.environ["OPENROUTER_DECISION_MODEL"], router)
+                    self.assertEqual(os.environ["OPENROUTER_SUBMODEL"], "navigation/model")
+
+    def navigation_task(self):
+        return {"destination": "Oldale Town", "instructions": "Follow the northern path on Route 101.",
+                "arrival_condition": "The Oldale Town sign appears.", "constraints": "Avoid optional interactions; stop for battles."}
+
+    def test_submodel_receives_assignment_and_cannot_replace_it(self):
+        memory = self.router_memory()
+        memory["working_memory"]["navigation_task"] = self.navigation_task()
+        sub_action = action("Up") | {"navigation_status": "continue", "navigation_task": None}
+        session = Mock()
+        session.post.side_effect = [Mock(json=Mock(return_value=self.router_reply("SUBMODEL"))),
+                                    Mock(json=Mock(return_value=completion(sub_action)))]
+        chosen = choose_action(session, "key", "main", b"png", ["Play"], memory, [action()],
+                               decision_model="router", submodel="cheap/navigation")
+        self.assertEqual(chosen["buttons"], ["Up"])
+        self.assertNotIn("navigation_task", chosen)
+        payload = session.post.call_args.kwargs["json"]
+        self.assertEqual(payload["model"], "cheap/navigation")
+        self.assertIn("Oldale Town", payload["messages"][1]["content"][0]["text"])
+        self.assertIn("navigation submodel", payload["messages"][0]["content"])
+        self.assertEqual(payload["tools"][0]["function"]["parameters"]["properties"]["buttons"]["items"]["enum"],
+                         ["Up", "Down", "Left", "Right", "WAIT"])
+
+    def test_submodel_route_requires_configuration_and_assignment(self):
+        for configured, assigned in ((False, True), (True, False)):
+            with self.subTest(configured=configured, assigned=assigned):
+                memory = self.router_memory()
+                if assigned:
+                    memory["working_memory"]["navigation_task"] = self.navigation_task()
+                session = Mock()
+                session.post.side_effect = [Mock(json=Mock(return_value=self.router_reply("SUBMODEL"))),
+                    Mock(json=Mock(return_value=completion(action() | {"navigation_task": None})))]
+                choose_action(session, "key", "main", b"png", ["Play"], memory, [action()],
+                              decision_model="router", submodel="cheap" if configured else "")
+                self.assertEqual(session.post.call_args.kwargs["json"]["model"], "main")
+
+    def test_submodel_cannot_bypass_first_turn_operator_messages_or_corrections(self):
+        for history, messages, error in (([], ["Play"], ""),
+            ([action()], ["Play", "Change destination"], ""), ([action()], ["Play"], "Invalid reply")):
+            with self.subTest(messages=messages, error=error, history=history):
+                memory = self.router_memory()
+                memory["working_memory"]["navigation_task"] = self.navigation_task()
+                session = Mock()
+                main_action = action("WAIT") | {"navigation_task": None, "operator_response": "I will reassess."}
+                session.post.side_effect = [Mock(json=Mock(return_value=self.router_reply("SUBMODEL"))),
+                    Mock(json=Mock(return_value=completion(main_action)))]
+                chosen = choose_action(session, "key", "main", b"png", messages, memory, history,
+                                       decision_error=error, decision_model="router", submodel="cheap")
+                self.assertEqual(chosen, main_action)
+                self.assertEqual(session.post.call_args.kwargs["json"]["model"], "main")
+
+    def test_invalid_navigation_assignments_are_rejected(self):
+        for task in ({}, {"destination": "Oldale"}, self.navigation_task() | {"arrival_condition": ""},
+                     self.navigation_task() | {"instructions": 3}):
+            with self.subTest(task=task), self.assertRaisesRegex(ModelDecisionError, "navigation_task"):
+                parse_model_action(completion(action() | {"navigation_task": task}))
+
+    def test_submodel_hands_back_arrival_blockage_invalid_actions_and_goal_changes(self):
+        for change in ({"navigation_status": "completed"}, {"navigation_status": "blocked"},
+                       {"buttons": ["A"]}, {"expected_result": ""},
+                       {"memory_update": action()["memory_update"] | {"goal_hierarchy": {
+                           "main_goal": "Different goal", "subgoal": "Different", "task": "Different"}}}):
+            with self.subTest(change=change):
+                memory = self.router_memory()
+                memory["working_memory"]["navigation_task"] = self.navigation_task()
+                sub_action = action("Up") | {"navigation_status": "continue"} | change
+                main_action = action("WAIT") | {"navigation_task": None}
+                session = Mock()
+                session.post.side_effect = [Mock(json=Mock(return_value=self.router_reply("SUBMODEL"))),
+                    Mock(json=Mock(return_value=completion(sub_action))),
+                    Mock(json=Mock(return_value=completion(main_action)))]
+                chosen = choose_action(session, "key", "main", b"png", ["Play"], memory, [action()],
+                                       decision_model="router", submodel="cheap")
+                self.assertEqual(chosen, main_action)
+                self.assertEqual([call.kwargs["json"]["model"] for call in session.post.call_args_list],
+                                 ["router", "cheap", "main"])
+                self.assertIn("NOT executed", session.post.call_args.kwargs["json"]["messages"][1]["content"][-1]["text"])
+
+    def test_main_model_must_supply_explicit_delegation_or_null(self):
+        session = Mock()
+        session.post.return_value.json.return_value = completion(action())
+        with self.assertRaisesRegex(ModelDecisionError, "navigation_task"):
+            choose_action(session, "key", "main", b"png", ["Play"], self.router_memory(), [], submodel="cheap")
+        session.post.return_value.json.return_value = completion(action() | {"navigation_task": self.navigation_task()})
+        chosen = choose_action(session, "key", "main", b"png", ["Play"], self.router_memory(), [], submodel="cheap")
+        self.assertEqual(chosen["navigation_task"], self.navigation_task())
+
+    def test_main_movement_requires_delegation_or_specific_retention_reason(self):
+        session = Mock()
+        session.post.return_value.json.return_value = completion(action("Up") | {"navigation_task": None})
+        with self.assertRaisesRegex(ModelDecisionError, "navigation_hold_reason"):
+            choose_action(session, "key", "main", b"png", ["Play"], self.router_memory(), [], submodel="cheap")
+        session.post.return_value.json.return_value = completion(action("Up") | {
+            "navigation_task": None, "navigation_hold_reason": "Selecting a battle-menu item, not walking."})
+        chosen = choose_action(session, "key", "main", b"png", ["Play"], self.router_memory(), [], submodel="cheap")
+        self.assertEqual(chosen["buttons"], ["Up"])
+        session.post.return_value.json.return_value = completion(action("Right") | {"navigation_task": self.navigation_task()})
+        chosen = choose_action(session, "key", "main", b"png", ["Play"], self.router_memory(), [], submodel="cheap")
+        self.assertEqual(chosen["navigation_task"], self.navigation_task())
+
+    def test_routing_override_explains_missing_navigation_assignment(self):
+        session = Mock()
+        session.post.side_effect = [Mock(json=Mock(return_value=self.router_reply("SUBMODEL"))),
+            Mock(json=Mock(return_value=completion(action() | {"navigation_task": self.navigation_task()})))]
+        with patch("builtins.print") as output:
+            choose_action(session, "key", "main", b"png", ["Play"], self.router_memory(), [action()],
+                          decision_model="router", submodel="cheap")
+        lines = "\n".join(str(call.args[0]) for call in output.call_args_list)
+        self.assertIn("SUBMODEL -> MODEL", lines)
+        self.assertIn("has not saved a navigation_task", lines)
+
+    def test_delegation_assignment_is_used_on_next_turn(self):
+        from game_memory import GameMemory
+        with tempfile.TemporaryDirectory() as directory:
+            store = GameMemory(directory, "Pokemon Emerald", "Complete the game")
+            assigned = action("Up") | {"navigation_task": self.navigation_task()}
+            session = Mock()
+            session.post.side_effect = [Mock(json=Mock(return_value=self.router_reply("MODEL"))),
+                Mock(json=Mock(return_value=completion(assigned)))]
+            chosen = choose_action(session, "key", "main", b"png", ["Play"], store.context(), [],
+                                   decision_model="router", submodel="cheap")
+            store.accept(chosen)
+            session.post.side_effect = [Mock(json=Mock(return_value=self.router_reply("SUBMODEL"))),
+                Mock(json=Mock(return_value=completion(action("Up") | {"navigation_status": "continue"})))]
+            chosen = choose_action(session, "key", "main", b"next", ["Play"], store.context(), [assigned],
+                                   decision_model="router", submodel="cheap")
+            self.assertEqual(session.post.call_args.kwargs["json"]["model"], "cheap")
+            self.assertEqual(chosen["buttons"], ["Up"])
+
+    def test_submodel_env_and_cli_precedence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "submodel.env"
+            path.write_text('OPENROUTER_API_KEY=key\nOPENROUTER_MODEL=main\nOPENROUTER_SUBMODEL=file/sub\n', encoding="utf-8")
+            for overrides, environment, expected in (([], {}, "file/sub"),
+                ([], {"OPENROUTER_SUBMODEL": "shell/sub"}, "shell/sub"),
+                (["--submodel", "cli/sub"], {}, "cli/sub"), (["--submodel", ""], {}, "")):
+                with self.subTest(expected=expected):
+                    result, _, _, choose, _ = self.run_mock_game([action()],
+                        ["--env-file", str(path), *overrides], environment=environment, load_settings=True)
+                    self.assertEqual(result, 0)
+                    self.assertEqual(choose.call_args.kwargs["submodel"], expected)
 
     def test_dialogue_shortcuts_run_through_execution_and_history(self):
         from play_pokemon import dialogue_action

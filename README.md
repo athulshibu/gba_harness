@@ -29,7 +29,7 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    .\codespace\Scripts\python.exe .\create_env.py
    ```
 
-   The helper asks for your API key (hidden while typing), main model, optional decision model, executable
+   The helper asks for your API key (hidden while typing), main model, optional decision model and navigation submodel, executable
    and ROM paths, speed, and server URL, then saves `.env`. Press Enter to use
    the displayed defaults or leave optional paths blank. It asks before
    replacing an existing `.env`. The resulting file looks like:
@@ -38,6 +38,7 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    OPENROUTER_API_KEY=your-openrouter-api-key
    OPENROUTER_MODEL=google/gemini-2.5-flash
    OPENROUTER_DECISION_MODEL=
+   OPENROUTER_SUBMODEL=
    SKYEMU_EXE=SkyEmu-v5-Windows.exe
    GAME_ROM="C:\Games\Pokemon_Emerald.gba"
    SKYEMU_SPEED=2
@@ -282,11 +283,14 @@ The main model remains configured by `OPENROUTER_MODEL`. The router returns:
 
 - `WAIT`: wait without pressing a button while dialogue or animation finishes.
 - `ADVANCE`: tap A once to advance a completed ordinary dialogue page.
+- `SUBMODEL`: send the same input to the cheaper navigation submodel to follow
+  the main planner's saved navigation assignment.
 - `MODEL`: send the same screenshots, instructions, memory, and history to the
   main model for its normal gameplay decision.
 
 Menus, battles, naming, choices, consequential confirmations, and uncertain
-screens are routed to the main model by the router's instructions. The first
+screens are routed to the main model by the router's instructions. Routine
+navigation with an explicit assignment can go to `SUBMODEL`. The first
 turn, unanswered operator messages, and correction attempts always invoke the
 main model after routing. Malformed router replies also fall back to the main
 model. Dialogue shortcuts retain the main model's goals and notes and record
@@ -299,6 +303,50 @@ the main model. `--steps` counts turns, including shortcut turns, rather than
 individual API calls. Use `--decision-model provider/model` to override the
 environment, or `--decision-model ""` to disable routing. A blank or absent
 `OPENROUTER_DECISION_MODEL` keeps the original main-model-only behavior.
+
+Set `OPENROUTER_SUBMODEL=deepseek/deepseek-v4.1-flash-1017` to enable navigation
+delegation. The submodel must support screenshot inputs and tool calling through
+OpenRouter's Chat Completions API. `--submodel provider/model` overrides the file;
+`--submodel ""` disables delegation. Automatic delegation also needs a configured
+decision model. Missing submodel configuration or an assignment makes a
+`SUBMODEL` recommendation fall back to the main model.
+
+When a submodel is configured, every main-model action must include
+`navigation_task`: an explicit object, or `null` to clear the assignment. It is
+saved separately in working memory with these fields:
+
+- `destination`: the specific location or landmark to reach.
+- `instructions`: the route to follow, including known landmarks and uncertainty.
+- `arrival_condition`: the visible evidence that means navigation is finished.
+- `constraints`: restrictions and conditions requiring the submodel to stop.
+
+The submodel receives this assignment, screenshots, history, goals, and notes.
+It can execute directional taps and `WAIT`, while preserving the main planner's
+objective, goal hierarchy, and navigation assignment. It reports
+`navigation_status` as `continue`, `completed`, or `blocked`. Completion,
+blockage, invalid replies, changes to the goal hierarchy, and proposed interaction
+buttons hand control back to the main model on the same screenshot before any
+submodel taps execute. Its raw response is included for the planner to reassess.
+Accepted navigation actions update observed progress and execution history using
+the existing memory and interruption handling. Dialogue shortcuts preserve the
+assignment; the main model replaces or clears it. Older memory files load with
+no assignment until the main model creates one.
+
+Routine movement defaults to delegation: the main model must leave a navigation
+assignment when starting a walking task, including routes needing local detours.
+If it returns only directional taps with a null assignment, it must include
+`navigation_hold_reason` explaining the need to retain control (for example,
+directional selection inside a menu or a strategic navigation problem). Otherwise
+the reply is rejected for correction. Local obstacle avoidance is submodel work;
+repeated failed recovery or a change of destination goes to the main planner.
+Live chat logs missing assignments, routing overrides, new assignments and the
+main model's stated reason for retaining navigation, so a displayed `MODEL` can
+be distinguished from an overridden `SUBMODEL` recommendation.
+
+Live chat displays `SUBMODEL` in the same small route box as the other routes.
+The model input/output tab shows the actual model ID for every request, including
+the submodel and any subsequent main-model handoff. A turn can therefore involve
+the router, submodel, and main model while counting as one `--steps` turn.
 
 The harness captures `/screen`, sends the image plus instructions, concise
 game notes, and the last 12 actions to OpenRouter's Chat Completions API, then validates a

@@ -36,7 +36,7 @@ function appendLog(text){
   const fragment=document.createDocumentFragment(),lines=logText.split('\n');
   for(let index=0;index<lines.length;index++){
     const line=lines[index];
-    const decision=/^(Decision model:\s*)(WAIT|ADVANCE|MODEL)(\s*)$/.exec(line);
+    const decision=/^(Decision model:\s*)(WAIT|ADVANCE|SUBMODEL|MODEL)(\s*)$/.exec(line);
     if(decision){
       const choice=document.createElement('span');choice.className='decision-choice';choice.textContent=decision[2];
       fragment.append(document.createTextNode(decision[1]),choice,document.createTextNode(decision[3]));
@@ -150,7 +150,7 @@ function renderExchange(exchange){
       actionLabel.textContent='Route: ';
       const route=exchange.response?.answers?.route;
       if(exchange.response!==undefined&&exchange.error===undefined){
-        actionText=route?.type==='choice'&&['WAIT','ADVANCE','MODEL'].includes(route.choice)
+        actionText=route?.type==='choice'&&['WAIT','ADVANCE','SUBMODEL','MODEL'].includes(route.choice)
           ?route.choice:'Invalid route; falling back to main model.';
       }
       actionBox.title='Routing recommendation; first turns, operator replies, and corrections require the main model.';

@@ -15,6 +15,28 @@ def entry(text, evidence="Visible on the current screen"):
 
 
 class MemoryTests(unittest.TestCase):
+    def test_navigation_assignment_survives_restart_and_shortcuts_until_revoked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = GameMemory(directory, "Pokemon Emerald", "Complete the game")
+            task = {"destination": "Oldale", "instructions": "Follow the north path",
+                    "arrival_condition": "Oldale sign appears", "constraints": "Stop for battles"}
+            store.accept(action() | {"navigation_task": task})
+            store.accept(action("Up") | {"navigation_status": "continue"})
+            from play_pokemon import dialogue_action
+            store.accept(dialogue_action("WAIT", store.context()))
+            restored = GameMemory(directory, "Pokemon Emerald", "Complete the game")
+            self.assertEqual(restored.context()["working_memory"]["navigation_task"], task)
+            restored.accept(action() | {"navigation_task": None})
+            self.assertIsNone(restored.context()["working_memory"]["navigation_task"])
+
+    def test_old_memory_without_navigation_assignment_loads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = GameMemory(directory, "Pokemon Emerald", "Complete the game")
+            del store.data["working_memory"]["navigation_task"]
+            store.save()
+            restored = GameMemory(directory, "Pokemon Emerald", "Complete the game")
+            self.assertIsNone(restored.context()["working_memory"]["navigation_task"])
+
     def test_restart_restores_goals_choices_events_and_execution(self):
         with tempfile.TemporaryDirectory() as directory:
             memory = GameMemory(directory, "Pokemon Emerald", "Complete Pokemon Emerald")
