@@ -9,6 +9,7 @@ header{display:flex;align-items:center;gap:16px;padding:16px 24px;border-bottom:
 main{display:grid;grid-template-columns:1fr 1fr;flex:1;min-height:0}.panel{display:flex;flex-direction:column;padding:20px;min-height:0;min-width:0}.panel+ .panel{border-left:1px solid #30394c}h2{margin:0 0 12px;color:#a5b8d3;font-size:12px;text-transform:uppercase;letter-spacing:2px}#chat,#conversation{margin:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.65 ui-monospace,Consolas,monospace;flex:1}.screen{position:relative;display:flex;align-items:center;justify-content:center;flex:1;min-height:0;background:#080b11;border-radius:12px;overflow:hidden}#game{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}#video-status{font-size:12px;color:#96aac3;margin:10px 0 0}
 footer{border-top:1px solid #30394c;padding:16px 24px}form{display:flex;gap:12px}textarea{resize:none;background:#1a2230;color:#fff;border:1px solid #465b7b;border-radius:8px;font:15px/1.5 system-ui;padding:10px;flex:1;min-width:0}#notice{margin:8px 0 0;color:#9cb4cd;font-size:12px}button[type=submit]{background:#396cd0} @media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:1fr 1fr}.panel{padding:12px}.panel+ .panel{border-left:0;border-top:1px solid #30394c}header{padding:12px;gap:8px}h1{font-size:15px}footer{padding:12px}}
 #chat .action-box,.exchange .action-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#142e35;border:1px solid #398b98;border-left:4px solid #6ee7d8;border-radius:8px;color:#a5f3e5;vertical-align:top}#chat .action-label,.exchange .action-label{color:#67e8f9;font-weight:700}.exchange details{margin:8px 0}
+#chat .decision-choice{display:inline-block;padding:0 6px;border:1px solid #465b7b;border-radius:4px;background:#293750;color:#a5f3e5;font-weight:700;line-height:1.4;vertical-align:baseline}
 
 [hidden]{display:none!important}.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button[aria-selected=true]{background:#396cd0;border-color:#77a4ff}.tabs button{font-size:13px}
 #chat .received-box,#conversation .received-box,#conversation .player-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#29213b;border:1px solid #7960a3;border-left:4px solid #c4a0ff;border-radius:8px;color:#eadbff;vertical-align:top}#chat .received-label,#conversation .received-label{color:#d8b4fe;font-weight:700}
@@ -16,6 +17,7 @@ footer{border-top:1px solid #30394c;padding:16px 24px}form{display:flex;gap:12px
 #chat .error-box,#conversation .error-box{display:inline-block;width:100%;margin:6px 0;padding:10px 12px;background:#391d25;border:1px solid #ad4c5e;border-left:4px solid #fb7185;border-radius:8px;color:#ffe0e5;vertical-align:top}#chat .error-label,#conversation .error-label{color:#fda4af;font-weight:700}
 #model-log{overflow:auto;flex:1;min-height:0;font:13px/1.6 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}.exchange{border:1px solid #30394c;border-radius:8px;padding:12px;margin-bottom:14px}.exchange h3{margin:0 0 8px;font:600 14px system-ui;color:#a5f3e5}.exchange pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}.exchange summary{cursor:pointer;color:#a5b8d3}.model-image{max-width:100%;width:240px;image-rendering:pixelated;display:block;margin:8px 0}.model-hint{color:#9cb4cd;font:12px/1.5 system-ui}
 
+.exchange .model-name{display:inline-block;max-width:100%;margin:0 0 8px;padding:6px 10px;border:1px solid #398b98;border-radius:6px;background:#142e35;color:#a5f3e5;font:600 13px/1.5 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
 .panel:first-child{position:relative}#chat,#conversation,#model-log{padding-bottom:56px;min-height:0}.scroll-bottom{position:absolute;right:40px;bottom:28px;z-index:1;width:40px;height:40px;padding:0;display:grid;place-items:center;border-radius:50%;box-shadow:0 3px 12px #0008;font-size:13px}.scroll-bottom:focus-visible{outline:2px solid #77a4ff;outline-offset:3px}@media(max-width:760px){.scroll-bottom{right:28px;bottom:20px}}
 </style>
 <header><h1>Pokemon live player</h1><span id="status" role="status">Connecting…</span><button id="pause" type="button">Pause</button><button id="resume" type="button">Resume</button><button id="quit" type="button">Stop</button></header>
@@ -34,7 +36,11 @@ function appendLog(text){
   const fragment=document.createDocumentFragment(),lines=logText.split('\n');
   for(let index=0;index<lines.length;index++){
     const line=lines[index];
-    if(line.startsWith('Error:')||line.trim()==='Received: /pause'){
+    const decision=/^(Decision model:\s*)(WAIT|ADVANCE|MODEL)(\s*)$/.exec(line);
+    if(decision){
+      const choice=document.createElement('span');choice.className='decision-choice';choice.textContent=decision[2];
+      fragment.append(document.createTextNode(decision[1]),choice,document.createTextNode(decision[3]));
+    }else if(line.startsWith('Error:')||line.trim()==='Received: /pause'){
       const box=document.createElement('span'),label=document.createElement('strong');
       box.className='error-box';label.className='error-label';label.textContent=line.startsWith('Error:')?'Error:':'Paused:';
       let text=line.startsWith('Error:')?line.slice(6):' AI actions paused (/pause).';
@@ -115,7 +121,11 @@ tabs.forEach((tab,index)=>{tab.onclick=()=>selectTab(index);tab.onkeydown=event=
 };});
 function renderExchange(exchange){
   const card=document.createElement('article'),heading=document.createElement('h3');card.className='exchange';card.dataset.id=exchange.id;
-  heading.textContent='Request '+exchange.id+(exchange.request?.model?' · '+exchange.request.model:'');card.append(heading);
+  heading.textContent='Request '+exchange.id;card.append(heading);
+  if(exchange.request?.model){
+    const modelName=document.createElement('div');modelName.className='model-name';
+    modelName.textContent=exchange.request.model;card.append(modelName);
+  }
   const previews=[];
   // Keep JSON readable while retaining the actual images as previews.
   const request=JSON.stringify(exchange.request,(key,value)=>{
