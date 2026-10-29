@@ -4,6 +4,7 @@
 *.env.*
 !.env.example
 *.gba
+*.sav
 
 # Automatically learned gameplay progress
 game_memory/
