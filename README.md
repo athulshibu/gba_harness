@@ -1,6 +1,6 @@
 # Pokemon AI harness
 
-`test_skyemu.py` is your original connection test. `play_pokemon.py` adds a
+`tests/test_skyemu.py` is your original connection test. `play_pokemon.py` adds a
 vision model that chooses a sequence of one to four controller taps per decision.
 It uses OpenRouter with the existing `requests` installation; no additional SDK is needed.
 
@@ -426,10 +426,13 @@ References: [SkyEmu HTTP API](https://github.com/skylersaleh/SkyEmu/blob/dev/doc
 [OpenRouter image inputs](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding),
 [OpenRouter tool calling](https://openrouter.ai/docs/guides/features/tool-calling).
 
-Run the harness tests without calling a model or controlling the emulator:
+Run the harness tests from the project folder without calling a model or
+controlling the emulator. This discovers `test_game_memory.py`,
+`test_play_pokemon.py`, and `test_pokemon_web.py` in `tests/`, excluding the
+manual SkyEmu connection test:
 
 ```powershell
-.\codespace\Scripts\python.exe -m unittest test_game_memory test_play_pokemon test_pokemon_web -v
+.\codespace\Scripts\python.exe -m unittest discover -s .\tests -p "test_[gp]*.py" -v
 ```
 
 ## HTTPS connection troubleshooting
