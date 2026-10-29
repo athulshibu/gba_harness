@@ -48,7 +48,7 @@ class CodexBackendTests(unittest.TestCase):
         with patch("codex_backend.subprocess.run", side_effect=run):
             response = request_codex(self.payload())
         self.assertEqual(response["usage"], {"input_tokens": 10, "output_tokens": 2})
-        self.assertEqual(response["model"], "gpt-6.1-sol")
+        self.assertEqual(response["model"], "codex/gpt-6.1-sol/high")
         self.assertTrue(all(not root.exists() for root in roots))
 
     def test_missing_cli_is_actionable(self):

@@ -49,7 +49,7 @@ class HarnessTests(unittest.TestCase):
 
     def test_codex_transport_uses_existing_validation_and_reports_usage(self):
         session, observer = Mock(), Mock()
-        response = completion(action()) | {"model": "gpt-6.1-sol", "usage": {"input_tokens": 12}}
+        response = completion(action()) | {"model": "codex/gpt-6.1-sol/high", "usage": {"input_tokens": 12}}
         with patch("play_pokemon.request_codex", return_value=response) as codex:
             chosen = choose_action(session, None, "codex/gpt-6.1-sol/high", b"png", ["Play"], {}, [], observer=observer)
         self.assertEqual(chosen["buttons"], ["A"])

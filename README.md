@@ -132,6 +132,8 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    runs. Each entry contains a UTC `timestamp`, `model`, `input_tokens`, and
    `output_tokens`. The response's model ID is used when available; otherwise
    the requested model ID is recorded. Main, router, and navigation queries are
+   recorded using the full configured name for Codex (for example,
+   `codex/gpt-6.1-sol/high`), including its reasoning effort. Queries are
    recorded separately, including replies rejected by local validation and
    queries discarded after an instruction change. Token counts come from the
    API's usage data; missing counts (including failed requests) are `null`, not

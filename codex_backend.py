@@ -88,6 +88,6 @@ def request_codex(payload):
         except FileNotFoundError as exc:
             raise ValueError(f"Codex model {model} returned no final action") from exc
         # Reuse the same parser, correction loop, and delegation checks as HTTP models.
-        return {"model": model, "usage": usage, "choices": [{"finish_reason": "tool_calls", "message": {
+        return {"model": payload["model"], "usage": usage, "choices": [{"finish_reason": "tool_calls", "message": {
             "tool_calls": [{"type": "function", "function": {"name": "press_buttons", "arguments": arguments}}]
         }}]}
