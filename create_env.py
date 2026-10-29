@@ -33,11 +33,7 @@ def main():
             return
 
         print("Enter your settings. Press Enter to accept a default in brackets.")
-        key = ""
-        while not key:
-            key = getpass("OpenRouter API key (hidden): ").strip()
-            if not key:
-                print("Please enter your OpenRouter API key.")
+        key = getpass("OpenRouter API key (hidden; optional when using only Codex): ").strip()
 
         settings = {
             "OPENROUTER_API_KEY": key,

@@ -30,6 +30,46 @@ def completion(*actions, finish_reason="tool_calls"):
 
 
 class HarnessTests(unittest.TestCase):
+    def test_codex_only_startup_does_not_require_openrouter_key(self):
+        result, _, _, choose, _ = self.run_mock_game([action()],
+            environment={"MAIN_MODEL": "codex/gpt-6.1-sol/high"})
+        self.assertEqual(result, 0)
+        self.assertEqual(choose.call_args.args[1:3], (None, "codex/gpt-6.1-sol/high"))
+
+    def test_codex_startup_rejects_invalid_configuration_before_emulator_control(self):
+        for extra in ({"SUBMODEL": "provider/navigation"}, {"DECISION_MODEL": "provider/router"},
+                      {"MAIN_MODEL": "codex/model"}, {"DECISION_MODEL": "codex/model/high"}):
+            with self.subTest(extra=extra), patch.dict(os.environ, {"MAIN_MODEL": "codex/gpt-6.1-sol/high", **extra}, clear=True), \
+                 patch("sys.argv", ["play_pokemon.py"]), patch("play_pokemon.load_env"), \
+                 patch("sys.stderr"), patch("play_pokemon.SkyEmu") as emulator:
+                with self.assertRaises(SystemExit) as error:
+                    main()
+                self.assertEqual(error.exception.code, 2)
+                emulator.assert_not_called()
+
+    def test_codex_transport_uses_existing_validation_and_reports_usage(self):
+        session, observer = Mock(), Mock()
+        response = completion(action()) | {"model": "gpt-6.1-sol", "usage": {"input_tokens": 12}}
+        with patch("play_pokemon.request_codex", return_value=response) as codex:
+            chosen = choose_action(session, None, "codex/gpt-6.1-sol/high", b"png", ["Play"], {}, [], observer=observer)
+        self.assertEqual(chosen["buttons"], ["A"])
+        self.assertEqual(codex.call_args.args[0]["model"], "codex/gpt-6.1-sol/high")
+        session.post.assert_not_called()
+        self.assertEqual(observer.call_args.args, ("response", response))
+
+    def test_codex_submodel_can_receive_openrouter_router_handoff(self):
+        session = Mock()
+        session.post.return_value.json.return_value = self.router_reply("SUBMODEL")
+        reply = action("Right") | {"navigation_status": "continue"}
+        memory = self.router_memory()
+        memory["working_memory"]["navigation_task"] = self.navigation_task()
+        with patch("play_pokemon.request_codex", return_value=completion(reply)) as codex:
+            chosen = choose_action(session, "key", "main", b"png", ["Play"], memory,
+                [action()], decision_model="router", submodel="codex/gpt-6.1-sol/high")
+        self.assertEqual(chosen["buttons"], ["Right"])
+        self.assertEqual(codex.call_args.args[0]["model"], "codex/gpt-6.1-sol/high")
+        self.assertEqual(session.post.call_count, 1)
+
     def test_activity_records_each_query_before_decision_validation_and_appends_across_runs(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "logs" / "usage.json"

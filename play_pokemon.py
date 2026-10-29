@@ -17,6 +17,7 @@ import time
 from urllib.parse import urlsplit
 
 import requests
+from codex_backend import codex_settings, request_codex
 from game_memory import GameMemory, MEMORY_UPDATE_SCHEMA, NAVIGATION_TASK_SCHEMA, validate_memory_update, validate_navigation_task
 from skyemu_window import WindowsSpeedControl
 
@@ -803,6 +804,14 @@ def request_completion(session, key, payload, observer=None, endpoint="https://o
             observer(kind, json.loads(encoded))
 
     report("request", payload)
+    if codex_settings(model):
+        try:
+            data = request_codex(payload)
+        except (ValueError, OSError) as exc:
+            report("error", str(exc))
+            raise
+        report("response", data)
+        return data
     try:
         response = verified_request(session.post,
             endpoint,
@@ -891,8 +900,17 @@ def main():
             return 1
         return 0
     key = os.getenv("OPENROUTER_API_KEY")
-    if not key or not args.model:
-        parser.error("Set OPENROUTER_API_KEY and MAIN_MODEL in the settings file or your shell (or provide --model).")
+    if not args.model:
+        parser.error("Set MAIN_MODEL in the settings file or your shell (or provide --model).")
+    try:
+        main_codex = codex_settings(args.model)
+        sub_codex = codex_settings(args.submodel)
+        if codex_settings(args.decision_model):
+            parser.error("DECISION_MODEL uses OpenRouter's Decisions API; Codex is supported for MAIN_MODEL and SUBMODEL.")
+    except ValueError as exc:
+        parser.error(str(exc))
+    if not key and (not main_codex or (args.submodel and not sub_codex) or args.decision_model):
+        parser.error("Set OPENROUTER_API_KEY when any configured model uses OpenRouter.")
     if args.steps < 0:
         parser.error("--steps must be zero or positive")
     if not 0 <= args.web_port <= 65535:

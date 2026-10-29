@@ -22,7 +22,8 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    ```
 2. In SkyEmu, enable HTTP Control Server in the advanced settings on port 8080
    once. The normal game window uses this saved setting when launched.
-3. Create an API key at [OpenRouter](https://openrouter.ai/settings/keys).
+3. For OpenRouter models, create an API key at [OpenRouter](https://openrouter.ai/settings/keys).
+   For Codex models, use the local CLI setup described under **How it works**.
    Create `.env` beside `play_pokemon.py` with the setup helper:
 
    ```powershell
@@ -48,8 +49,7 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    Model selection uses `MAIN_MODEL`, `SUBMODEL`, and `DECISION_MODEL`.
    These replace the previous OpenRouter-prefixed model settings; update any
    custom settings files or shell variables. `OPENROUTER_API_KEY` remains the
-   credential for the current OpenRouter backend. The renamed settings prepare
-   model selection for other backends; local Codex execution is not yet wired in.
+   credential for models using the OpenRouter backend.
 
    The executable defaults to `SkyEmu-v5-Windows.exe` beside `play_pokemon.py`,
    including when `SKYEMU_EXE` is missing or blank. Set another executable
@@ -115,6 +115,7 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    `--model provider/model` to test a different model. Text-only models cannot
    play from screenshots. Each decision sends a screenshot through OpenRouter
    to the selected provider and incurs API usage according to its pricing.
+   Models prefixed with `codex/` instead use your locally authenticated Codex CLI.
    The default limit is 20 decisions, including
    decisions discarded after an instruction change. Use `--steps 0` to run
    continuously. Missing credentials or a model ID cause an error before the
@@ -299,6 +300,34 @@ remains, with a disconnected status. Stop may wait for an outstanding model
 request to return or time out. Each run starts a new session log.
 
 ## How it works
+
+Use `codex/<model>/<reasoning_effort>` for `MAIN_MODEL` or `SUBMODEL` to run
+the locally installed Codex CLI instead of OpenRouter. For example:
+
+```dotenv
+MAIN_MODEL=codex/gpt-6.1-sol/high
+SUBMODEL=codex/gpt-6.1-sol/low
+DECISION_MODEL=
+```
+
+This passes `--model gpt-6.1-sol` and `-c model_reasoning_effort="high"` for
+the main model. Install Codex, make it available on PATH, and run `codex login`
+before starting the harness. Codex uses its existing local authentication;
+`OPENROUTER_API_KEY` can be blank when all configured models use Codex.
+Mixing Codex and OpenRouter models is supported. `DECISION_MODEL` still uses
+OpenRouter's Decisions API and requires its API key. Automatic navigation
+delegation still requires a decision model and a saved navigation assignment.
+
+Each Codex decision starts a fresh CLI process in a temporary directory with
+read-only sandboxing, user configuration ignored, and shell tools disabled.
+The harness supplies the same instructions, memory, history, and labeled
+screenshots, then validates the returned JSON before controller input.
+Temporary screenshots and output are removed after the call. Codex usage is
+recorded in the existing activity log when supplied by CLI events. CLI failures
+stop play; invalid action JSON follows the existing correction loop. Calls time
+out after 180 seconds. Model access depends on your Codex account.
+
+CLI options: [official OpenAI documentation](https://developers.openai.com/codex/cli/reference/).
 
 Set `DECISION_MODEL=perplexity/pplx-decider-v1.2` in `.env` to send every
 turn to a separate vision decision model first. Other models must support image
