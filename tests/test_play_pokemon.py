@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from play_pokemon import BUTTONS, TAP_SECONDS, RELEASE_SECONDS, ModelDecisionError, Operator, SkyEmu, choose_action, format_decision, load_env, main, parse_model_action, validate_action, verified_request
+from play_pokemon import ActivityLog, BUTTONS, TAP_SECONDS, RELEASE_SECONDS, ModelDecisionError, Operator, SkyEmu, choose_action, format_decision, load_env, main, parse_model_action, request_completion, validate_action, verified_request
 
 
 def action(button="A"):
@@ -30,6 +30,97 @@ def completion(*actions, finish_reason="tool_calls"):
 
 
 class HarnessTests(unittest.TestCase):
+    def test_activity_records_each_query_before_decision_validation_and_appends_across_runs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "logs" / "usage.json"
+            session = Mock()
+            router = self.router_reply("MODEL") | {"usage": {"prompt_tokens": 12, "completion_tokens": 1}}
+            invalid = {"model": "provider/actual", "usage": {"prompt_tokens": 100, "completion_tokens": 25}, "choices": []}
+            session.post.side_effect = [Mock(json=Mock(return_value=router)), Mock(json=Mock(return_value=invalid))]
+            with self.assertRaises(ModelDecisionError):
+                choose_action(session, "secret-key", "main", b"png", ["Play"], self.router_memory(),
+                              [action()], decision_model="router", observer=ActivityLog(path))
+            entries = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual([(entry["model"], entry["input_tokens"], entry["output_tokens"]) for entry in entries],
+                             [("router", 12, 1), ("provider/actual", 100, 25)])
+            self.assertTrue(all(entry["timestamp"].endswith("+00:00") for entry in entries))
+            self.assertNotIn("secret-key", path.read_text(encoding="utf-8"))
+            session.post.side_effect = None
+            session.post.return_value = Mock(json=Mock(return_value={"usage": {"input_tokens": 9, "output_tokens": 0}}))
+            request_completion(session, "secret-key", {"model": "navigation"}, observer=ActivityLog(path))
+            entries = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(len(entries), 3)
+            self.assertEqual(entries[-1]["model"], "navigation")
+            self.assertEqual(entries[-1]["input_tokens"], 9)
+            self.assertEqual(entries[-1]["output_tokens"], 0)
+
+    def test_activity_missing_usage_and_transport_failures_record_unknown_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "usage.json"
+            logger = ActivityLog(path)
+            session = Mock()
+            session.post.return_value = Mock(json=Mock(return_value={"usage": None}))
+            request_completion(session, "key", {"model": "main"}, observer=logger)
+            session.post.side_effect = requests.Timeout("timed out")
+            with self.assertRaises(requests.Timeout):
+                request_completion(session, "key", {"model": "router"}, observer=logger)
+            entries = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual([entry["model"] for entry in entries], ["main", "router"])
+            self.assertTrue(all(entry["input_tokens"] is None and entry["output_tokens"] is None for entry in entries))
+
+    def test_activity_preserves_invalid_existing_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "usage.json"
+            for content in ("{broken", "{}"):
+                with self.subTest(content=content):
+                    path.write_text(content, encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "usage.json"):
+                        ActivityLog(path)
+                    self.assertEqual(path.read_text(encoding="utf-8"), content)
+
+    def test_activity_initializes_empty_and_whitespace_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "usage.json"
+            for content in ("", " \n\t", "\ufeff", "\ufeff[]"):
+                with self.subTest(content=content):
+                    path.write_text(content, encoding="utf-8")
+                    logger = ActivityLog(path)
+                    self.assertEqual(json.loads(path.read_text(encoding="utf-8")), [])
+                    logger("request", {"model": "main"})
+                    logger("response", {"usage": {"prompt_tokens": 2, "completion_tokens": 1}})
+                    self.assertEqual(len(json.loads(path.read_text(encoding="utf-8"))), 1)
+
+    def test_activity_cli_defaults_to_activity_json_and_is_disabled_without_flag(self):
+        with patch("play_pokemon.ActivityLog") as logger:
+            result, _, _, choose, _ = self.run_mock_game([action()])
+            self.assertEqual(result, 0)
+            logger.assert_not_called()
+            self.assertNotIn("observer", choose.call_args.kwargs)
+            result, _, _, choose, _ = self.run_mock_game([action()], ["--activity"])
+            self.assertEqual(result, 0)
+            logger.assert_called_once_with(Path("activity.json"))
+            self.assertTrue(callable(choose.call_args.kwargs["observer"]))
+
+    def test_activity_cli_records_usage_with_and_without_dashboard(self):
+        for mode in ("--terminal", "--browser"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "usage.json"
+                payload = {"model": "actual/model", "usage": {"prompt_tokens": 7, "completion_tokens": 3}}
+
+                def decide(*args, observer, **kwargs):
+                    observer("request", {"model": "requested/model"})
+                    observer("response", payload)
+                    return action()
+
+                with patch("pokemon_web.Dashboard") as dashboard:
+                    result, _, _, _, _ = self.run_mock_game(decide, [mode, "--activity", str(path)], steps=1)
+                self.assertEqual(result, 0)
+                entry, = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual((entry["model"], entry["input_tokens"], entry["output_tokens"]), ("actual/model", 7, 3))
+                if mode == "--browser":
+                    self.assertEqual(dashboard.return_value.record_model.call_count, 2)
+                    dashboard.return_value.record_model.assert_called_with("response", payload)
+
     def router_memory(self):
         from game_memory import GameMemory
         with tempfile.TemporaryDirectory() as directory:

@@ -4,12 +4,14 @@ import argparse
 import base64
 from copy import deepcopy
 from collections import deque
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from urllib.parse import urlsplit
@@ -739,6 +741,55 @@ def choose_action(session, key, model, image, messages, memory, history, previou
     return action
 
 
+class ActivityLog:
+    """Persist usage for each completed query, including rejected decisions."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.model = None
+        try:
+            content = self.path.read_text(encoding="utf-8-sig")
+        except FileNotFoundError:
+            content = ""
+        try:
+            self.records = json.loads(content) if content.strip() else []
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid JSON in activity file {self.path}: {exc}") from exc
+        if not isinstance(self.records, list):
+            raise ValueError(f"Activity file must contain a JSON array: {self.path}")
+        self.save()
+
+    def save(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.path.parent,
+                                             prefix=self.path.name + ".", suffix=".tmp", delete=False) as stream:
+                temporary = Path(stream.name)
+                json.dump(self.records, stream, indent=2)
+                stream.write("\n")
+            temporary.replace(self.path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    def __call__(self, kind, payload):
+        if kind == "request":
+            self.model = payload["model"]
+            return
+        if kind not in ("response", "error"):
+            return
+        data = payload if isinstance(payload, dict) else {}
+        usage = data.get("usage") or {}
+        self.records.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "model": data.get("model") or self.model,
+            "input_tokens": usage.get("prompt_tokens", usage.get("input_tokens")),
+            "output_tokens": usage.get("completion_tokens", usage.get("output_tokens")),
+        })
+        self.save()
+
+
 def request_completion(session, key, payload, observer=None, endpoint="https://openrouter.ai/api/v1/chat/completions"):
     """Shared verified transport and redacted dashboard events for both models."""
     model = payload["model"]
@@ -823,6 +874,8 @@ def main():
     parser.add_argument("--soul-file", type=Path, default=os.getenv("SOUL_FILE") or None,
                         help="Persistent AI instructions (default: SOUL.md beside this script); relative paths use the current directory; overrides SOUL_FILE")
     parser.add_argument("--steps", type=int, default=20, help="Maximum decisions; 0 runs until stopped (default: 20)")
+    parser.add_argument("--activity", nargs="?", const=Path("activity.json"), type=Path, metavar="FILE",
+                        help="Append per-query model and token usage to JSON (default: activity.json in the current directory)")
     parser.add_argument("--check-connection", action="store_true", help="Test verified OpenRouter HTTPS without an API key, paid inference, or emulator")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--browser", dest="browser", action="store_true", help="Open local live chat and emulator view (default)")
@@ -855,6 +908,7 @@ def main():
         parser.error(f"Cannot read soul file {soul_path}: {exc}")
 
     try:
+        activity = ActivityLog(args.activity) if args.activity is not None else None
         memory_store = GameMemory(args.memory_dir, args.game, args.goal)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
@@ -872,12 +926,21 @@ def main():
             dashboard = Dashboard(operator, args.base, args.web_port, original_stdout)
             sys.stdout = dashboard
             dashboard.start()
+        def observe_model(kind, payload):
+            if activity is not None:
+                activity(kind, payload)
+            if dashboard is not None:
+                dashboard.record_model(kind, payload)
+
+        observer = observe_model if activity is not None or dashboard is not None else None
         print("OpenRouter model:", args.model, flush=True)
         print("OpenRouter decision model:", args.decision_model or "disabled", flush=True)
         print("OpenRouter navigation submodel:", args.submodel or "disabled", flush=True)
         print(f"Settings file: {env_path.resolve()}; requested SKYEMU_SPEED: {args.speed}x", flush=True)
         print(f"Soul file: {soul_path.resolve()} ({'loaded' if soul.strip() else 'no custom instructions'})", flush=True)
         print(f"Gameplay memory: {args.memory_dir.resolve()}", flush=True)
+        if activity is not None:
+            print(f"Activity log: {activity.path.resolve()}", flush=True)
         emulator.prepare(os.getenv("SKYEMU_EXE") or "SkyEmu-v5-Windows.exe", os.getenv("GAME_ROM", ""), Path(__file__).resolve().parent)
         print("Connection:", emulator.reply_text(emulator.api("ping")))
         emulator.release()
@@ -906,7 +969,7 @@ def main():
                                            replied_messages=replied_messages,
                                            decision_model=args.decision_model,
                                            submodel=args.submodel,
-                                           **({"observer": dashboard.record_model} if dashboard is not None else {}))
+                                           **({"observer": observer} if observer is not None else {}))
                 except ModelDecisionError as exc:
                     if operator.snapshot()[:3] != (version, False, False):
                         invalid_decisions = 0

@@ -114,6 +114,24 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    continuously. Missing credentials or a model ID cause an error before the
    emulator is controlled.
 
+   Add `--activity` to record each model query in `activity.json` in the current
+   directory, or use `--activity .\logs\usage.json` to choose a file:
+
+   ```powershell
+   .\codespace\Scripts\python.exe .\play_pokemon.py --env-file .\my.env --activity --steps 0
+   ```
+
+   The file is a JSON array, saved after every response and appended to across
+   runs. Each entry contains a UTC `timestamp`, `model`, `input_tokens`, and
+   `output_tokens`. The response's model ID is used when available; otherwise
+   the requested model ID is recorded. Main, router, and navigation queries are
+   recorded separately, including replies rejected by local validation and
+   queries discarded after an instruction change. Token counts come from the
+   API's usage data; missing counts (including failed requests) are `null`, not
+   estimated. Prompts, screenshots, replies, and API keys are not saved in this
+   log. Logging works in both browser and terminal modes and is off by default.
+   The default `activity.json` is excluded from Git.
+
 4. Send messages through the browser while it plays. For terminal input instead,
    launch with `--terminal`, then type messages into the same terminal and press Enter:
 

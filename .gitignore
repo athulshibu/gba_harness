@@ -8,6 +8,7 @@
 
 # Automatically learned gameplay progress
 game_memory/
+logs/
 
 # Test files
 *.png
