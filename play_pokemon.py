@@ -60,7 +60,7 @@ def load_env(path):
             continue
         name, value = line.split("=", 1)
         name, value = name.strip(), value.strip()
-        if name not in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_DECISION_MODEL", "OPENROUTER_SUBMODEL", "SKYEMU_EXE", "GAME_ROM", "SKYEMU_SPEED", "SKYEMU_URL", "SKYEMU_FAST_FORWARD_KEY", "SOUL_FILE", "GAME_MEMORY_DIR", "GAME_NAME"):
+        if name not in ("OPENROUTER_API_KEY", "MAIN_MODEL", "DECISION_MODEL", "SUBMODEL", "SKYEMU_EXE", "GAME_ROM", "SKYEMU_SPEED", "SKYEMU_URL", "SKYEMU_FAST_FORWARD_KEY", "SOUL_FILE", "GAME_MEMORY_DIR", "GAME_NAME"):
             continue
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
             value = value[1:-1]
@@ -864,9 +864,9 @@ def main():
     load_env(env_path)
     parser.add_argument("--base", default=os.getenv("SKYEMU_URL") or "http://127.0.0.1:8080")
     parser.add_argument("--speed", type=int, choices=(1, 2), default=os.getenv("SKYEMU_SPEED") or "1", help="Game speed; overrides SKYEMU_SPEED in the settings file")
-    parser.add_argument("--model", default=os.getenv("OPENROUTER_MODEL"), help="OpenRouter model ID supporting images and tool calling (provider/model)")
-    parser.add_argument("--decision-model", default=os.getenv("OPENROUTER_DECISION_MODEL") or "", help="Dialogue router model ID supporting images; blank disables routing (overrides OPENROUTER_DECISION_MODEL)")
-    parser.add_argument("--submodel", default=os.getenv("OPENROUTER_SUBMODEL") or "", help="Navigation model ID supporting images and tool calling (overrides OPENROUTER_SUBMODEL)")
+    parser.add_argument("--model", default=os.getenv("MAIN_MODEL"), help="Main model ID supporting images and tool calling (overrides MAIN_MODEL)")
+    parser.add_argument("--decision-model", default=os.getenv("DECISION_MODEL") or "", help="Dialogue router model ID supporting images; blank disables routing (overrides DECISION_MODEL)")
+    parser.add_argument("--submodel", default=os.getenv("SUBMODEL") or "", help="Navigation model ID supporting images and tool calling (overrides SUBMODEL)")
     parser.add_argument("--goal", default="Complete Pokemon Emerald.")
     parser.add_argument("--game", default=os.getenv("GAME_NAME") or "Pokemon Emerald", help="Game identity for persistent memory")
     parser.add_argument("--memory-dir", type=Path, default=os.getenv("GAME_MEMORY_DIR") or Path(__file__).resolve().with_name("game_memory"),
@@ -892,7 +892,7 @@ def main():
         return 0
     key = os.getenv("OPENROUTER_API_KEY")
     if not key or not args.model:
-        parser.error("Set OPENROUTER_API_KEY and OPENROUTER_MODEL in the settings file or your shell (or provide --model).")
+        parser.error("Set OPENROUTER_API_KEY and MAIN_MODEL in the settings file or your shell (or provide --model).")
     if args.steps < 0:
         parser.error("--steps must be zero or positive")
     if not 0 <= args.web_port <= 65535:

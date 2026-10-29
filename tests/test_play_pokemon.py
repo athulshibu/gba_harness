@@ -196,9 +196,9 @@ class HarnessTests(unittest.TestCase):
     def test_decision_model_env_and_cli_precedence(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "router.env"
-            path.write_text('OPENROUTER_API_KEY=key\nOPENROUTER_MODEL=main\nOPENROUTER_DECISION_MODEL=file/router\n', encoding="utf-8")
+            path.write_text('OPENROUTER_API_KEY=key\nMAIN_MODEL=main\nDECISION_MODEL=file/router\n', encoding="utf-8")
             for overrides, environment, expected in (([], {}, "file/router"),
-                ([], {"OPENROUTER_DECISION_MODEL": "shell/router"}, "shell/router"),
+                ([], {"DECISION_MODEL": "shell/router"}, "shell/router"),
                 (["--decision-model", "cli/router"], {}, "cli/router"),
                 (["--decision-model", ""], {}, "")):
                 with self.subTest(expected=expected):
@@ -219,8 +219,8 @@ class HarnessTests(unittest.TestCase):
                     create_env.main()
                 with patch.dict(os.environ, {}, clear=True):
                     load_env(script.with_name(".env"))
-                    self.assertEqual(os.environ["OPENROUTER_DECISION_MODEL"], router)
-                    self.assertEqual(os.environ["OPENROUTER_SUBMODEL"], "navigation/model")
+                    self.assertEqual(os.environ["DECISION_MODEL"], router)
+                    self.assertEqual(os.environ["SUBMODEL"], "navigation/model")
 
     def navigation_task(self):
         return {"destination": "Oldale Town", "instructions": "Follow the northern path on Route 101.",
@@ -353,9 +353,9 @@ class HarnessTests(unittest.TestCase):
     def test_submodel_env_and_cli_precedence(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "submodel.env"
-            path.write_text('OPENROUTER_API_KEY=key\nOPENROUTER_MODEL=main\nOPENROUTER_SUBMODEL=file/sub\n', encoding="utf-8")
+            path.write_text('OPENROUTER_API_KEY=key\nMAIN_MODEL=main\nSUBMODEL=file/sub\n', encoding="utf-8")
             for overrides, environment, expected in (([], {}, "file/sub"),
-                ([], {"OPENROUTER_SUBMODEL": "shell/sub"}, "shell/sub"),
+                ([], {"SUBMODEL": "shell/sub"}, "shell/sub"),
                 (["--submodel", "cli/sub"], {}, "cli/sub"), (["--submodel", ""], {}, "")):
                 with self.subTest(expected=expected):
                     result, _, _, choose, _ = self.run_mock_game([action()],
@@ -573,7 +573,7 @@ class HarnessTests(unittest.TestCase):
         emulator.api.side_effect = emulator_api
         with ExitStack() as stack:
             memory_directory = stack.enter_context(tempfile.TemporaryDirectory())
-            stack.enter_context(patch.dict(os.environ, environment if environment is not None else {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_MODEL": "test-model"}, clear=True))
+            stack.enter_context(patch.dict(os.environ, environment if environment is not None else {"OPENROUTER_API_KEY": "test-key", "MAIN_MODEL": "test-model"}, clear=True))
             mode_args = [] if default_mode or "--browser" in extra_args else ["--terminal"]
             stack.enter_context(patch("sys.argv", ["play_pokemon.py", *mode_args, "--memory-dir", memory_directory, "--steps", str(len(decisions) if steps is None else steps), *extra_args]))
             if not load_settings:
@@ -623,13 +623,13 @@ class HarnessTests(unittest.TestCase):
     def test_custom_env_file_supplies_defaults_and_respects_overrides(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "custom settings.env"
-            path.write_text('OPENROUTER_API_KEY=file-key\nOPENROUTER_MODEL=file/model\nSKYEMU_URL=http://localhost:9090\nSKYEMU_SPEED=2\n', encoding="utf-8")
+            path.write_text('OPENROUTER_API_KEY=file-key\nMAIN_MODEL=file/model\nSKYEMU_URL=http://localhost:9090\nSKYEMU_SPEED=2\n', encoding="utf-8")
             for overrides in (False, True):
                 with self.subTest(overrides=overrides):
                     args = ["--env-file", str(path)]
                     environment = {}
                     if overrides:
-                        environment = {"OPENROUTER_API_KEY": "shell-key", "OPENROUTER_MODEL": "shell/model"}
+                        environment = {"OPENROUTER_API_KEY": "shell-key", "MAIN_MODEL": "shell/model"}
                         args += ["--model", "cli/model", "--base", "http://localhost:8081", "--speed", "1"]
                     result, emulator, _, choose, _ = self.run_mock_game([action()], args, environment, load_settings=True)
                     self.assertEqual(result, 0)
@@ -648,7 +648,7 @@ class HarnessTests(unittest.TestCase):
     def test_executable_default_and_override(self):
         for configured in (None, "", "custom/SkyEmu.exe"):
             with self.subTest(configured=configured):
-                environment = {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_MODEL": "test-model"}
+                environment = {"OPENROUTER_API_KEY": "test-key", "MAIN_MODEL": "test-model"}
                 if configured is not None:
                     environment["SKYEMU_EXE"] = configured
                 result, emulator, _, _, _ = self.run_mock_game([action()], environment=environment)
@@ -702,13 +702,13 @@ class HarnessTests(unittest.TestCase):
             load_env(path)  # Missing .env is allowed when using shell variables.
             path.write_text(
                 '# Settings\nOPENROUTER_API_KEY="test=key"\n'
-                "OPENROUTER_MODEL='file/model'\nOTHER_SETTING=ignored\n",
+                "MAIN_MODEL='file/model'\nOTHER_SETTING=ignored\n",
                 encoding="utf-8-sig",
             )
-            os.environ["OPENROUTER_MODEL"] = "shell/model"
+            os.environ["MAIN_MODEL"] = "shell/model"
             load_env(path)
             self.assertEqual(os.environ["OPENROUTER_API_KEY"], "test=key")
-            self.assertEqual(os.environ["OPENROUTER_MODEL"], "shell/model")
+            self.assertEqual(os.environ["MAIN_MODEL"], "shell/model")
             self.assertNotIn("OTHER_SETTING", os.environ)
 
     def test_load_env_accepts_emulator_paths_without_unescaping_backslashes(self):

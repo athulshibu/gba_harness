@@ -36,14 +36,20 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
 
    ```dotenv
    OPENROUTER_API_KEY=your-openrouter-api-key
-   OPENROUTER_MODEL=google/gemini-2.5-flash
-   OPENROUTER_DECISION_MODEL=
-   OPENROUTER_SUBMODEL=
+   MAIN_MODEL=google/gemini-2.5-flash
+   DECISION_MODEL=
+   SUBMODEL=
    SKYEMU_EXE=SkyEmu-v5-Windows.exe
    GAME_ROM="C:\Games\Pokemon_Emerald.gba"
    SKYEMU_SPEED=2
    SKYEMU_URL=http://127.0.0.1:8080
    ```
+
+   Model selection uses `MAIN_MODEL`, `SUBMODEL`, and `DECISION_MODEL`.
+   These replace the previous OpenRouter-prefixed model settings; update any
+   custom settings files or shell variables. `OPENROUTER_API_KEY` remains the
+   credential for the current OpenRouter backend. The renamed settings prepare
+   model selection for other backends; local Codex execution is not yet wired in.
 
    The executable defaults to `SkyEmu-v5-Windows.exe` beside `play_pokemon.py`,
    including when `SKYEMU_EXE` is missing or blank. Set another executable
@@ -105,7 +111,7 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    diagnose shell variables or `--env-file` / `--speed` overrides.
 
    Choose a model supporting both image inputs and tool calling.
-   Change `OPENROUTER_MODEL` or pass
+   Change `MAIN_MODEL` or pass
    `--model provider/model` to test a different model. Text-only models cannot
    play from screenshots. Each decision sends a screenshot through OpenRouter
    to the selected provider and incurs API usage according to its pricing.
@@ -294,10 +300,10 @@ request to return or time out. Each run starts a new session log.
 
 ## How it works
 
-Set `OPENROUTER_DECISION_MODEL=perplexity/pplx-decider-v1.2` in `.env` to send every
+Set `DECISION_MODEL=perplexity/pplx-decider-v1.2` in `.env` to send every
 turn to a separate vision decision model first. Other models must support image
 state and OpenRouter's Decisions API (`/api/alpha/decisions`).
-The main model remains configured by `OPENROUTER_MODEL`. The router returns:
+The main model remains configured by `MAIN_MODEL`. The router returns:
 
 - `WAIT`: wait without pressing a button while dialogue or animation finishes.
 - `ADVANCE`: tap A once to advance a completed ordinary dialogue page.
@@ -320,9 +326,9 @@ request view. Each router call incurs its own API usage; `MODEL` turns also call
 the main model. `--steps` counts turns, including shortcut turns, rather than
 individual API calls. Use `--decision-model provider/model` to override the
 environment, or `--decision-model ""` to disable routing. A blank or absent
-`OPENROUTER_DECISION_MODEL` keeps the original main-model-only behavior.
+`DECISION_MODEL` keeps the original main-model-only behavior.
 
-Set `OPENROUTER_SUBMODEL=deepseek/deepseek-v4.1-flash-1017` to enable navigation
+Set `SUBMODEL=deepseek/deepseek-v4.1-flash-1017` to enable navigation
 delegation. The submodel must support screenshot inputs and tool calling through
 OpenRouter's Chat Completions API. `--submodel provider/model` overrides the file;
 `--submodel ""` disables delegation. Automatic delegation also needs a configured

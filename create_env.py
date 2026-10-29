@@ -41,9 +41,9 @@ def main():
 
         settings = {
             "OPENROUTER_API_KEY": key,
-            "OPENROUTER_MODEL": ask("OpenRouter model", "google/gemini-2.5-flash"),
-            "OPENROUTER_DECISION_MODEL": ask("Decision model (OpenRouter provider/model ID, optional; blank disables dialogue routing)"),
-            "OPENROUTER_SUBMODEL": ask("Navigation submodel (OpenRouter provider/model ID, optional; blank disables delegation)"),
+            "MAIN_MODEL": ask("Main model", "google/gemini-2.5-flash"),
+            "DECISION_MODEL": ask("Decision model (optional; blank disables dialogue routing)"),
+            "SUBMODEL": ask("Navigation submodel (optional; blank disables delegation)"),
         }
         print("For automatic launch, enter a ROM path. The default executable is beside play_pokemon.py.")
         settings["SKYEMU_EXE"] = ask_path("SkyEmu executable path", "SkyEmu-v5-Windows.exe")
