@@ -51,6 +51,16 @@ You can also run `setup_codespace.bat` from an existing Command Prompt.
    custom settings files or shell variables. `OPENROUTER_API_KEY` remains the
    credential for models using the OpenRouter backend.
 
+4. Installing Codex
+   ```
+   node --version
+   npm --version
+   npm install -g @openai/codex
+   codex --version
+   codex login
+   codex login status
+   ```
+
    The executable defaults to `SkyEmu-v5-Windows.exe` beside `play_pokemon.py`,
    including when `SKYEMU_EXE` is missing or blank. Set another executable
    path to override it. Use your actual ROM path during setup, then run
@@ -512,6 +522,8 @@ security settings or certificate checks are disabled.
 ## Important Links
 
 - [SkyEmu](https://sourceforge.net/projects/skyemu.mirror/)
+- [Python Installer](https://www.python.org/downloads/)
+- [NodeJS Installer](https://nodejs.org/en/download)
 - [VS Code](https://code.visualstudio.com/)
 - [Tabby v1.0.238](https://github.com/Eugeny/tabby/releases/tag/v1.0.238)
 - [Git for Windows](https://git-scm.com/install/windows)
